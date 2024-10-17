@@ -37,16 +37,16 @@ app.get("/webhook", (req, res) => {
 
 console.log("Server initialized...");
 
-// 2. Listen for POST requests with lead data from Meta
+// 2. Listen for POST requests from Meta
 app.post("/webhook", async (req, res) => {
   console.log("POST request received for webhook");
 
-  // Log the entire body of the request for debugging
+  // Log the entire body of the request
   const body = req.body;
   console.log("Full body received:", JSON.stringify(body, null, 2));
 
+  // Handle "page" object for leadgen data
   if (body.object === "page") {
-    // Iterate through each entry in the request
     body.entry.forEach(async (entry) => {
       console.log("Entry received:", JSON.stringify(entry, null, 2));
 
@@ -88,10 +88,22 @@ app.post("/webhook", async (req, res) => {
       });
     });
 
-    // Respond with a 200 OK to acknowledge receipt
     res.status(200).send("EVENT_RECEIVED");
+
+  // Handle "permissions" object type
+  } else if (body.object === "permissions") {
+    body.entry.forEach((entry) => {
+      console.log("Permissions entry received:", JSON.stringify(entry, null, 2));
+      // Handle permission-related changes, e.g., log changes in leads_retrieval permission
+      entry.changed_fields.forEach((field) => {
+        console.log(`Changed permission field: ${field}`);
+      });
+    });
+
+    res.status(200).send("PERMISSION_EVENT_RECEIVED");
+
   } else {
-    console.log("Request received, but no page object was found.");
+    console.log("Request received, but no recognized object was found.");
     res.status(404).send("Nothing Found");
   }
 });
