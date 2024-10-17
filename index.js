@@ -6,7 +6,7 @@ const mongoose = require("mongoose");
 const app = express();
 app.use(bodyParser.json()); // Parse incoming request bodies as JSON
 
-const VERIFY_TOKEN = "my_verify_token"; // Use this token to verify the webhook
+const VERIFY_TOKEN = "my_verify_token"; // Token to verify the webhook
 
 // MongoDB Schema for Lead Storage
 const leadSchema = new mongoose.Schema({
@@ -21,26 +21,27 @@ const Lead = mongoose.model("Lead", leadSchema);
 
 // 1. Verify the Webhook when Meta sends a GET request
 app.get("/webhook", (req, res) => {
-  console.log("get hit");
+  console.log("GET request received for webhook verification");
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
   if (mode && token === VERIFY_TOKEN) {
-    console.log("challenge accepted");
+    console.log("Webhook verification successful, challenge accepted.");
     res.status(200).send(challenge);
   } else {
+    console.log("Webhook verification failed.");
     res.status(403).send("Verification failed");
   }
 });
 
-console.log("Server initiated...");
+console.log("Server initialized...");
 
 // 2. Listen for POST requests with lead data from Meta
 app.post("/webhook", async (req, res) => {
-  console.log("hit post");
+  console.log("POST request received for webhook");
 
-  // Log the entire body of the request
+  // Log the entire body of the request for debugging
   const body = req.body;
   console.log("Full body received:", JSON.stringify(body, null, 2));
 
@@ -76,7 +77,7 @@ app.post("/webhook", async (req, res) => {
             });
 
             await newLead.save();
-            console.log("New lead added:", JSON.stringify(newLead, null, 2));
+            console.log("New lead added to MongoDB:", JSON.stringify(newLead, null, 2));
           } catch (error) {
             console.error(
               "Error fetching lead data:",
@@ -90,6 +91,7 @@ app.post("/webhook", async (req, res) => {
     // Respond with a 200 OK to acknowledge receipt
     res.status(200).send("EVENT_RECEIVED");
   } else {
+    console.log("Request received, but no page object was found.");
     res.status(404).send("Nothing Found");
   }
 });
