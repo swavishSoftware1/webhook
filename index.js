@@ -2,7 +2,6 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const axios = require("axios");
 const mongoose = require("mongoose");
-// const Lead = require('./models/Lead'); // MongoDB model for storing leads
 
 const app = express();
 app.use(bodyParser.json()); // Parse incoming request bodies as JSON
@@ -27,50 +26,57 @@ app.get("/webhook", (req, res) => {
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  if (mode && token === "my_verify_token") {
-    console.log("challenge accepted")
+  if (mode && token === VERIFY_TOKEN) {
+    console.log("challenge accepted");
     res.status(200).send(challenge);
   } else {
     res.status(403).send("Verification failed");
   }
 });
-console.log("hii");
+
+console.log("Server initiated...");
+
 // 2. Listen for POST requests with lead data from Meta
 app.post("/webhook", async (req, res) => {
   console.log("hit post");
+
+  // Log the entire body of the request
   const body = req.body;
-  console.log("body", body);
+  console.log("Full body received:", JSON.stringify(body, null, 2));
 
   if (body.object === "page") {
+    // Iterate through each entry in the request
     body.entry.forEach(async (entry) => {
+      console.log("Entry received:", JSON.stringify(entry, null, 2));
+
       entry.changes.forEach(async (change) => {
+        console.log("Change detected:", JSON.stringify(change, null, 2));
+
         if (change.field === "leadgen") {
           const formId = change.value.form_id;
           const leadgenId = change.value.leadgen_id;
+          console.log(`Form ID: ${formId}, Leadgen ID: ${leadgenId}`);
 
           // Fetch lead data using the Meta API
           try {
             const leadData = await getLeadData(leadgenId);
+            console.log("Lead data fetched from Meta:", JSON.stringify(leadData, null, 2));
 
             // Save lead data to MongoDB
             const newLead = new Lead({
               formId: formId,
               leadgenId: leadgenId,
               fullName:
-                leadData.field_data.find((field) => field.name === "full_name")
-                  ?.values[0] || "N/A",
+                leadData.field_data.find((field) => field.name === "full_name")?.values[0] || "N/A",
               email:
-                leadData.field_data.find((field) => field.name === "email")
-                  ?.values[0] || "N/A",
+                leadData.field_data.find((field) => field.name === "email")?.values[0] || "N/A",
               phoneNumber:
-                leadData.field_data.find(
-                  (field) => field.name === "phone_number"
-                )?.values[0] || "N/A",
+                leadData.field_data.find((field) => field.name === "phone_number")?.values[0] || "N/A",
               createdTime: leadData.created_time,
             });
 
             await newLead.save();
-            console.log("New lead added:", newLead);
+            console.log("New lead added:", JSON.stringify(newLead, null, 2));
           } catch (error) {
             console.error(
               "Error fetching lead data:",
@@ -90,22 +96,14 @@ app.post("/webhook", async (req, res) => {
 
 // Function to Fetch Lead Data from Meta Using Lead ID
 const getLeadData = async (leadgenId) => {
-  console.log("leadgenId", leadgenId);
+  console.log("Fetching lead data for Leadgen ID:", leadgenId);
   const accessToken =
-    "EAAHEnds0DWQBO6rU2aKa8tJyO7MZBrDDwpZCSAv6PETt09Irxiq3C4YF4a4aTRgL5uwk5aE92WUxSZCgTacWZCvVOOx0wjxdOZAn0yyrNf5aoQH4prYqJOe77Y91QdTAP0SB8YforZANF3Bumd24uuHLXNgeJIuxZC7J87HZAGfzEoGkaOSKFQ1lmmZAT";
+    "EAAHUxwZBQdZBQBO8UPHWogLz6LqPpbLBpwpPDwK2eEN50Gc0dCbn7YJ4VuodU3piTkhFKdS0nT5mLij2KFfKiOLm8KvMN3anKNZB1Fx5dCQK9k43lDEJs9fqQ0VdUh0gZBwGknhYdlnOP98I4rdW5LOjYZAt6gKAwVGbYUjvzprYJBXZAntd0qGIW1OVDeIZC6hBRc8UCSUtN055tsRxM44SlAbh8UZD";
   const response = await axios.get(
     `https://graph.facebook.com/v17.0/${leadgenId}?access_token=${accessToken}`
   );
   return response.data;
 };
 
-// MongoDB Connection and Start Server
-// mongoose
-//   .connect('mongodb+srv://Kashif:Kashif2023@cluster0.bkcuqkh.mongodb.net/webhook', { useNewUrlParser: true, useUnifiedTopology: true })
-//   .then(() => {
-//     console.log('Connected to MongoDB');
-//     app.listen(5000, () => console.log('Server is running on port 5000'));
-//   })
-//   .catch((err) => console.error('Failed to connect to MongoDB:', err));
-
+// Start the server
 app.listen(5000, () => console.log("Server is running on port 5000"));
