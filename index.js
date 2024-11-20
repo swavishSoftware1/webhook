@@ -132,7 +132,8 @@ const fetchAllLeads = async () => {
             const leads = leadsResponse.data.data;
 
             for (const lead of leads) {
-              console.log("Lead:", JSON.stringify(lead, null, 2));
+              console.log(`Lead for Page ID: ${page.id}, Page Name: ${page.name}`);
+              console.log("Lead Details:", JSON.stringify(lead, null, 2));
             }
 
             if (leads.length > 0) {
