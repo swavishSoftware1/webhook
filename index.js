@@ -7,8 +7,7 @@ const app = express();
 app.use(bodyParser.json()); // Parse incoming request bodies as JSON
 
 const VERIFY_TOKEN = "my_verify_token"; // Token to verify the webhook
-const USER_ACCESS_TOKEN =
-  "EAAHEnds0DWQBO7sCSBN8ZAMUzNZCGZA9C86s1I8YZBGQvUCEQvMzzsZB0s2J6lFpdFgMtZB9mZBq7IDMso2uODFHyx2hyLfRNxMmi6movNtK7Ivz1RX9Lk0WRkczj11Ixc5wO3vvU8fpvTkZCJjGtXvlZCgfcS38K1L9AZA9o7iZCSm5kqBxIvPE4Xn5pTlx7zaSnZAW0yYyE0htp0ZBGNZB4DFAZDZD"; // Replace with your User Access Token
+const USER_ACCESS_TOKEN = "YOUR_USER_ACCESS_TOKEN"; // Replace with your User Access Token
 
 // Track the last fetched time for leads
 let lastFetchedTime = null;
@@ -58,29 +57,7 @@ app.post("/webhook", async (req, res) => {
 
           try {
             const leadData = await getLeadData(leadgenId);
-            const pageDetails = await getPageDetails(pageId);
-
-            console.log("Lead Data Fetched:");
-            console.log(JSON.stringify(leadData, null, 2));
-
-            console.log("Page Details:");
-            console.log(JSON.stringify(pageDetails, null, 2));
-
-            const processedLead = {
-              formId,
-              leadgenId,
-              pageId,
-              pageName: pageDetails.name,
-              fullName:
-                leadData.field_data.find((field) => field.name === "full_name")?.values[0] || "N/A",
-              email:
-                leadData.field_data.find((field) => field.name === "email")?.values[0] || "N/A",
-              phoneNumber:
-                leadData.field_data.find((field) => field.name === "phone_number")?.values[0] || "N/A",
-              createdTime: leadData.created_time,
-            };
-
-            console.log("Processed Lead Data:", JSON.stringify(processedLead, null, 2));
+            console.log("Lead Data Fetched:", JSON.stringify(leadData, null, 2));
           } catch (error) {
             console.error("Error fetching lead data:", error.response?.data || error.message);
           }
@@ -108,21 +85,7 @@ const getLeadData = async (leadgenId) => {
   }
 };
 
-// Function to Fetch Page Details
-const getPageDetails = async (pageId) => {
-  try {
-    console.log(`Fetching details for Page ID: ${pageId}`);
-    const response = await axios.get(
-      `https://graph.facebook.com/v17.0/${pageId}?fields=name&access_token=${USER_ACCESS_TOKEN}`
-    );
-    return response.data;
-  } catch (error) {
-    console.error("Error fetching page details:", error.response?.data || error.message);
-    throw new Error("Failed to fetch page details.");
-  }
-};
-
-// Fetch All Pages and Their Latest Leads
+// Fetch All Pages, Forms, and Leads
 const fetchAllLeads = async () => {
   try {
     console.log("Fetching all pages linked to the user.");
@@ -134,10 +97,11 @@ const fetchAllLeads = async () => {
     console.log(`Found ${pages.length} pages. Fetching leads...`);
 
     for (const page of pages) {
-      console.log(`Fetching leads for Page: ${page.name} (ID: ${page.id})`);
+      const pageAccessToken = page.access_token;
+      console.log(`Fetching forms for Page: ${page.name} (ID: ${page.id})`);
 
       const formsResponse = await axios.get(
-        `https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${page.access_token}`
+        `https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${pageAccessToken}`
       );
       const forms = formsResponse.data.data;
 
@@ -145,55 +109,36 @@ const fetchAllLeads = async () => {
 
       for (const form of forms) {
         console.log(`Fetching leads for Form ID: ${form.id}`);
+        const leadsResponse = await axios.get(
+          `https://graph.facebook.com/v17.0/${form.id}/leads?access_token=${pageAccessToken}`
+        );
+        const leads = leadsResponse.data.data;
 
-        try {
-          const params = {
-            access_token: page.access_token,
-            filtering: lastFetchedTime
-              ? JSON.stringify([
-                  {
-                    field: "created_time",
-                    operator: "GREATER_THAN",
-                    value: lastFetchedTime,
-                  },
-                ])
-              : undefined,
+        console.log(`Found ${leads.length} leads for Form ID: ${form.id}.`);
+
+        for (const lead of leads) {
+          const leadData = {
+            pageId: page.id,
+            pageName: page.name,
+            formId: form.id,
+            leadId: lead.id,
+            createdTime: lead.created_time,
+            fieldData: lead.field_data,
           };
 
-          const leadsResponse = await axios.get(
-            `https://graph.facebook.com/v17.0/${form.id}/leads`,
-            { params }
-          );
-          const leads = leadsResponse.data.data;
+          console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
+        }
 
-          console.log(`Found ${leads.length} new leads for Form ID: ${form.id}.`);
-
-          for (const lead of leads) {
-            const leadData = {
-              pageId: page.id,
-              pageName: page.name,
-              formId: form.id,
-              leadId: lead.id,
-              createdTime: lead.created_time,
-              fieldData: lead.field_data,
-            };
-
-            console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
-          }
-
-          if (leads.length > 0) {
-            const latestLeadTime = leads[leads.length - 1].created_time;
-            lastFetchedTime = new Date(latestLeadTime).toISOString();
-            saveLastFetchedTime();
-            console.log(`Updated lastFetchedTime to: ${lastFetchedTime}`);
-          }
-        } catch (error) {
-          console.error("Error fetching leads:", error.response?.data || error.message);
+        if (leads.length > 0) {
+          const latestLeadTime = leads[leads.length - 1].created_time;
+          lastFetchedTime = new Date(latestLeadTime).toISOString();
+          saveLastFetchedTime();
+          console.log(`Updated lastFetchedTime to: ${lastFetchedTime}`);
         }
       }
     }
   } catch (error) {
-    console.error("Error fetching pages or leads:", error.response?.data || error.message);
+    console.error("Error fetching pages, forms, or leads:", error.response?.data || error.message);
   }
 };
 
