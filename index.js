@@ -29,7 +29,7 @@ const saveLastFetchedTime = () => {
   console.log("Last fetched time saved:", lastFetchedTime);
 };
 
-// Function to refresh the access token
+// Function to Refresh Access Token
 const refreshAccessToken = async () => {
   try {
     console.log("Refreshing access token...");
@@ -83,7 +83,7 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// Fetch lead data
+// Fetch Lead Data
 const getLeadData = async (leadgenId) => {
   try {
     const response = await axios.get(
@@ -100,7 +100,7 @@ const getLeadData = async (leadgenId) => {
   }
 };
 
-// Fetch all pages, forms, and leads
+// Fetch All Pages, Forms, and Leads
 const fetchAllLeads = async () => {
   try {
     console.log("Fetching all pages...");
