@@ -17,7 +17,7 @@ let lastFetchedTime = null;
 const loadLastFetchedTime = () => {
   if (fs.existsSync("lastFetchedTime.txt")) {
     lastFetchedTime = fs.readFileSync("lastFetchedTime.txt", "utf-8");
-    console.log("Loaded last fetched time:", lastFetchedTime);
+    console.log("Last fetched time loaded:", lastFetchedTime);
   } else {
     lastFetchedTime = null;
   }
@@ -26,9 +26,10 @@ const loadLastFetchedTime = () => {
 // Save last fetched time
 const saveLastFetchedTime = () => {
   fs.writeFileSync("lastFetchedTime.txt", lastFetchedTime);
+  console.log("Last fetched time saved:", lastFetchedTime);
 };
 
-// Refresh Access Token
+// Function to refresh the access token
 const refreshAccessToken = async () => {
   try {
     console.log("Refreshing access token...");
@@ -38,7 +39,7 @@ const refreshAccessToken = async () => {
     USER_ACCESS_TOKEN = response.data.access_token;
     console.log("Access token refreshed:", USER_ACCESS_TOKEN);
   } catch (error) {
-    console.error("Error refreshing access token:", error.response?.data || error.message);
+    console.error("Failed to refresh access token:", error.response?.data || error.message);
     throw new Error("Access token refresh failed.");
   }
 };
@@ -53,6 +54,7 @@ app.get("/webhook", (req, res) => {
     console.log("Webhook verified successfully.");
     res.status(200).send(challenge);
   } else {
+    console.error("Webhook verification failed.");
     res.status(403).send("Verification failed.");
   }
 });
@@ -81,7 +83,7 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// Fetch Lead Data
+// Fetch lead data
 const getLeadData = async (leadgenId) => {
   try {
     const response = await axios.get(
@@ -90,20 +92,15 @@ const getLeadData = async (leadgenId) => {
     return response.data;
   } catch (error) {
     if (error.response?.data?.error?.code === 190) {
-      console.log("Access token expired. Refreshing...");
+      console.log("Token expired. Refreshing token...");
       await refreshAccessToken();
-      return getLeadData(leadgenId);
-    }
-    if (error.response?.data?.error?.code === 1) {
-      console.error("Temporary API error. Retrying in a few seconds...");
-      await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait for 5 seconds
-      return getLeadData(leadgenId);
+      return getLeadData(leadgenId); // Retry with refreshed token
     }
     throw error;
   }
 };
 
-// Fetch All Pages, Forms, and Leads
+// Fetch all pages, forms, and leads
 const fetchAllLeads = async () => {
   try {
     console.log("Fetching all pages...");
@@ -154,14 +151,16 @@ const fetchAllLeads = async () => {
     if (error.response?.data?.error?.code === 190) {
       console.log("Access token expired. Refreshing...");
       await refreshAccessToken();
-      return fetchAllLeads();
+      return fetchAllLeads(); // Retry after refreshing token
     }
     console.error("Error fetching pages:", error.response?.data || error.message);
   }
 };
 
+// Load last fetched time
 loadLastFetchedTime();
 
+// Start the server and fetch leads on startup
 app.listen(5000, () => {
   console.log("Server running on port 5000.");
   fetchAllLeads();
