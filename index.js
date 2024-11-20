@@ -29,7 +29,7 @@ const saveLastFetchedTime = () => {
   console.log("Last fetched time saved:", lastFetchedTime);
 };
 
-// Function to Refresh Access Token
+// Refresh access token
 const refreshAccessToken = async () => {
   try {
     console.log("Refreshing access token...");
@@ -44,6 +44,20 @@ const refreshAccessToken = async () => {
   }
 };
 
+// Verify Webhook
+app.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode && token === VERIFY_TOKEN) {
+    console.log("Webhook verified successfully.");
+    res.status(200).send(challenge);
+  } else {
+    res.status(403).send("Verification failed.");
+  }
+});
+
 // Fetch All Pages, Forms, and Leads with Batching
 const fetchAllLeads = async () => {
   try {
@@ -57,78 +71,68 @@ const fetchAllLeads = async () => {
       const pageAccessToken = page.access_token;
       console.log(`Fetching forms for Page: ${page.name} (ID: ${page.id})`);
 
-      try {
-        const formsResponse = await axios.get(
-          `https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${pageAccessToken}`
-        );
-        const forms = formsResponse.data.data;
+      const formsResponse = await axios.get(
+        `https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${pageAccessToken}`
+      );
+      const forms = formsResponse.data.data;
 
-        // Prepare batched requests
-        const batchRequests = forms.map((form) => {
-          let url = `/${form.id}/leads`;
-          if (lastFetchedTime) {
-            url += `?filtering=[{"field":"created_time","operator":"GREATER_THAN","value":"${lastFetchedTime}"}]`;
-          }
-          return {
-            method: "GET",
-            relative_url: url,
-          };
-        });
+      // Prepare batch requests for leads
+      const batchRequests = forms.map((form) => ({
+        method: "GET",
+        relative_url: `${form.id}/leads?access_token=${pageAccessToken}${
+          lastFetchedTime
+            ? `&filtering=[{"field":"created_time","operator":"GREATER_THAN","value":"${lastFetchedTime}"}]`
+            : ""
+        }`,
+      }));
 
-        // Split into batches of 50
-        const batchChunks = [];
-        for (let i = 0; i < batchRequests.length; i += 50) {
-          batchChunks.push(batchRequests.slice(i, i + 50));
-        }
+      // Split into smaller batches (if needed)
+      const batches = [];
+      const batchSize = 10;
+      for (let i = 0; i < batchRequests.length; i += batchSize) {
+        batches.push(batchRequests.slice(i, i + batchSize));
+      }
 
-        // Execute batched requests
-        for (const batch of batchChunks) {
-          try {
-            const batchResponse = await axios.post(
-              `https://graph.facebook.com/v17.0/`,
-              { batch },
-              { params: { access_token: pageAccessToken } }
-            );
+      for (const batch of batches) {
+        try {
+          const batchResponse = await axios.post(
+            `https://graph.facebook.com/v17.0/`,
+            { batch },
+            { params: { access_token: USER_ACCESS_TOKEN } }
+          );
 
-            for (const response of batchResponse.data) {
-              if (response.code === 200) {
-                const leads = JSON.parse(response.body).data;
+          batchResponse.data.forEach((response, index) => {
+            if (response.code === 200) {
+              const leads = JSON.parse(response.body).data;
+              console.log(`Leads for Form ${batch[index].relative_url}:`, leads);
 
-                for (const lead of leads) {
-                  console.log(`Lead for Page ID: ${page.id}, Page Name: ${page.name}`);
-                  console.log("Lead Details:", JSON.stringify(lead, null, 2));
-                }
+              leads.forEach((lead) => {
+                console.log(
+                  `Lead for Page ${page.name} (ID: ${page.id}):`,
+                  JSON.stringify(lead, null, 2)
+                );
+              });
 
-                if (leads.length > 0) {
-                  lastFetchedTime = leads[leads.length - 1].created_time;
-                  saveLastFetchedTime();
-                }
-              } else {
-                console.error("Error in batched response:", response.body);
+              if (leads.length > 0) {
+                lastFetchedTime = leads[leads.length - 1].created_time;
+                saveLastFetchedTime();
               }
+            } else {
+              console.error("Error in batched response:", response.body);
             }
-          } catch (batchError) {
-            console.error("Error executing batch:", batchError.response?.data || batchError.message);
-          }
+          });
+        } catch (batchError) {
+          console.error("Error executing batch:", batchError.response?.data || batchError.message);
         }
-      } catch (formError) {
-        console.error("Error fetching forms:", formError.response?.data || formError.message);
       }
     }
   } catch (error) {
-    if (error.response?.data?.error?.code === 190) {
-      console.log("Access token expired. Refreshing...");
-      await refreshAccessToken();
-      return fetchAllLeads(); // Retry after refreshing token
-    }
     console.error("Error fetching pages:", error.response?.data || error.message);
   }
 };
 
-// Load last fetched time
 loadLastFetchedTime();
 
-// Start the server and fetch leads on startup
 app.listen(5000, () => {
   console.log("Server running on port 5000.");
   fetchAllLeads();
