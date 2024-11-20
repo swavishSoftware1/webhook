@@ -139,8 +139,17 @@ const fetchAllLeads = async () => {
         console.log(`Found ${leads.length} leads for Form ID: ${form.id}.`);
 
         for (const lead of leads) {
-          console.log("Fetched Lead Data:");
-          console.log(JSON.stringify(lead, null, 2));
+          // Log fetched lead data along with page details
+          const leadData = {
+            pageId: page.id,
+            pageName: page.name,
+            formId: form.id,
+            leadId: lead.id,
+            createdTime: lead.created_time,
+            fieldData: lead.field_data, // This contains the actual lead info (name, email, etc.)
+          };
+
+          console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
         }
       }
     }
@@ -148,6 +157,7 @@ const fetchAllLeads = async () => {
     console.error("Error fetching pages or leads:", error.response?.data || error.message);
   }
 };
+
 
 // Start the Server
 app.listen(5000, () => {
