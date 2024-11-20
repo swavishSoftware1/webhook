@@ -106,7 +106,7 @@ const fetchAllLeads = async () => {
           return { method: "GET", relative_url: relativeUrl };
         });
 
-        const batchSize = 10; // Limit the batch size
+        const batchSize = 5; // Reduced batch size for stability
         for (let i = 0; i < batchRequests.length; i += batchSize) {
           const batch = batchRequests.slice(i, i + batchSize);
 
@@ -164,6 +164,9 @@ const fetchAllLeads = async () => {
               await new Promise((resolve) => setTimeout(resolve, 2000 * retryCount));
             }
           }
+
+          // Introduce a delay between batches to avoid overwhelming the API
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (formError) {
         console.error(
