@@ -16,6 +16,7 @@ let lastFetchedTime = null;
 const loadLastFetchedTime = () => {
   if (fs.existsSync("lastFetchedTime.txt")) {
     lastFetchedTime = fs.readFileSync("lastFetchedTime.txt", "utf-8");
+    console.log("lastFetchedTime", lastFetchedTime);
   } else {
     lastFetchedTime = null;
   }
@@ -98,55 +99,61 @@ const getLeadData = async (leadgenId) => {
 // Fetch All Pages, Forms, and Leads
 const fetchAllLeads = async () => {
   try {
-    console.log("Fetching all pages...");
+    console.log("Fetching all pages linked to the user.");
     const pagesResponse = await axios.get(
       `https://graph.facebook.com/v17.0/me/accounts?fields=id,name,access_token&access_token=${USER_ACCESS_TOKEN}`
     );
     const pages = pagesResponse.data.data;
 
+    console.log(`Found ${pages.length} pages. Fetching leads...`);
+
     for (const page of pages) {
       const pageAccessToken = page.access_token;
-      console.log(`Fetching forms for Page: ${page.name}`);
+      console.log(`Fetching forms for Page: ${page.name} (ID: ${page.id})`);
 
-      try {
-        const formsResponse = await axios.get(
-          `https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${pageAccessToken}`
+      const formsResponse = await axios.get(
+        `https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${pageAccessToken}`
+      );
+      const forms = formsResponse.data.data;
+
+      console.log(`Found ${forms.length} forms for Page: ${page.name}.`);
+
+      for (const form of forms) {
+        console.log(`Fetching leads for Form ID: ${form.id}`);
+        const leadsResponse = await axios.get(
+          `https://graph.facebook.com/v17.0/${form.id}/leads?access_token=${pageAccessToken}`
         );
-        const forms = formsResponse.data.data;
+        const leads = leadsResponse.data.data;
 
-        for (const form of forms) {
-          console.log(`Fetching leads for Form ID: ${form.id}`);
-          try {
-            const leadsResponse = await axios.get(
-              `https://graph.facebook.com/v17.0/${form.id}/leads?access_token=${pageAccessToken}`
-            );
-            const leads = leadsResponse.data.data;
+        console.log(`Found ${leads.length} leads for Form ID: ${form.id}.`);
 
-            for (const lead of leads) {
-              console.log("Lead:", JSON.stringify(lead, null, 2));
-            }
+        for (const lead of leads) {
+          const leadData = {
+            pageId: page.id,
+            pageName: page.name,
+            formId: form.id,
+            leadId: lead.id,
+            createdTime: lead.created_time,
+            fieldData: lead.field_data,
+          };
 
-            if (leads.length > 0) {
-              lastFetchedTime = leads[leads.length - 1].created_time;
-              saveLastFetchedTime();
-            }
-          } catch (leadError) {
-            console.error("Error fetching leads:", leadError.response?.data || leadError.message);
-          }
+          console.log(`Page: ${page.name} (ID: ${page.id})`);
+          console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
         }
-      } catch (formError) {
-        console.error("Error fetching forms:", formError.response?.data || formError.message);
+
+        if (leads.length > 0) {
+          const latestLeadTime = leads[leads.length - 1].created_time;
+          lastFetchedTime = new Date(latestLeadTime).toISOString();
+          saveLastFetchedTime();
+          console.log(`Updated lastFetchedTime to: ${lastFetchedTime}`);
+        }
       }
     }
   } catch (error) {
-    if (error.response?.data?.error?.code === 190) {
-      console.log("Access token expired. Refreshing token...");
-      await refreshAccessToken();
-      return fetchAllLeads(); // Retry after refreshing token
-    }
-    console.error("Error fetching pages:", error.response?.data || error.message);
+    console.error("Error fetching pages, forms, or leads:", error.response?.data || error.message);
   }
 };
+
 
 loadLastFetchedTime();
 
