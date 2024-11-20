@@ -110,7 +110,7 @@ const fetchAllLeads = async () => {
   try {
     console.log("Fetching all pages linked to the user.");
     const pagesResponse = await axios.get(
-      `https://graph.facebook.com/v17.0/me/accounts?fields=id,name&access_token=${USER_ACCESS_TOKEN}`
+      `https://graph.facebook.com/v17.0/me/accounts?fields=id,name,access_token&access_token=${USER_ACCESS_TOKEN}`
     );
     const pages = pagesResponse.data.data;
 
@@ -121,7 +121,7 @@ const fetchAllLeads = async () => {
 
       // Fetch leadgen forms for the Page
       const formsResponse = await axios.get(
-        `https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${USER_ACCESS_TOKEN}`
+        `https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${page.access_token}`
       );
       const forms = formsResponse.data.data;
 
@@ -132,7 +132,7 @@ const fetchAllLeads = async () => {
 
         // Fetch leads for the form
         const leadsResponse = await axios.get(
-          `https://graph.facebook.com/v17.0/${form.id}/leads?access_token=${USER_ACCESS_TOKEN}`
+          `https://graph.facebook.com/v17.0/${form.id}/leads?access_token=${page.access_token}`
         );
         const leads = leadsResponse.data.data;
 
