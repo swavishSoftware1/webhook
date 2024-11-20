@@ -148,48 +148,67 @@ const fetchAllLeads = async () => {
       for (const form of forms) {
         console.log(`Fetching leads for Form ID: ${form.id}`);
 
-        // Build the filtering query for new leads
-        const params = {
-          access_token: page.access_token,
-          filtering: lastFetchedTime
-            ? JSON.stringify([
-                {
-                  field: "created_time",
-                  operator: "GREATER_THAN",
-                  value: lastFetchedTime,
-                },
-              ])
-            : undefined,
-        };
+        let retryCount = 0;
+        const maxRetries = 3;
 
-        // Fetch leads
-        const leadsResponse = await axios.get(
-          `https://graph.facebook.com/v17.0/${form.id}/leads`,
-          { params }
-        );
-        const leads = leadsResponse.data.data;
+        while (retryCount < maxRetries) {
+          try {
+            // Build the filtering query for new leads
+            const params = {
+              access_token: page.access_token,
+              filtering: lastFetchedTime
+                ? JSON.stringify([
+                    {
+                      field: "created_time",
+                      operator: "GREATER_THAN",
+                      value: lastFetchedTime,
+                    },
+                  ])
+                : undefined,
+            };
 
-        console.log(`Found ${leads.length} new leads for Form ID: ${form.id}.`);
+            // Fetch leads
+            const leadsResponse = await axios.get(
+              `https://graph.facebook.com/v17.0/${form.id}/leads`,
+              { params }
+            );
+            const leads = leadsResponse.data.data;
 
-        for (const lead of leads) {
-          const leadData = {
-            pageId: page.id,
-            pageName: page.name,
-            formId: form.id,
-            leadId: lead.id,
-            createdTime: lead.created_time,
-            fieldData: lead.field_data,
-          };
+            console.log(`Found ${leads.length} new leads for Form ID: ${form.id}.`);
 
-          console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
-        }
+            for (const lead of leads) {
+              const leadData = {
+                pageId: page.id,
+                pageName: page.name,
+                formId: form.id,
+                leadId: lead.id,
+                createdTime: lead.created_time,
+                fieldData: lead.field_data,
+              };
 
-        // Update last fetched time
-        if (leads.length > 0) {
-          const latestLeadTime = leads[leads.length - 1].created_time;
-          lastFetchedTime = new Date(latestLeadTime).toISOString();
-          saveLastFetchedTime(); // Save the updated time
-          console.log(`Updated lastFetchedTime to: ${lastFetchedTime}`);
+              console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
+            }
+
+            // Update last fetched time
+            if (leads.length > 0) {
+              const latestLeadTime = leads[leads.length - 1].created_time;
+              lastFetchedTime = new Date(latestLeadTime).toISOString();
+              saveLastFetchedTime(); // Save the updated time
+              console.log(`Updated lastFetchedTime to: ${lastFetchedTime}`);
+            }
+
+            break; // Exit retry loop on success
+          } catch (error) {
+            retryCount++;
+            console.error(`Error fetching leads (Attempt ${retryCount}):`, error.response?.data || error.message);
+
+            if (retryCount === maxRetries) {
+              console.error("Max retries reached. Skipping this form.");
+            } else {
+              console.log("Retrying...");
+              await new Promise((resolve) => setTimeout(resolve, retryCount * 1000)); // Exponential backoff
+            }
+          }
         }
       }
     }
@@ -197,6 +216,7 @@ const fetchAllLeads = async () => {
     console.error("Error fetching pages or leads:", error.response?.data || error.message);
   }
 };
+
 
 
 // Load last fetched time on server startup
