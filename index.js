@@ -84,49 +84,61 @@ const fetchAllLeads = async () => {
         return { method: "GET", relative_url: relativeUrl };
       });
 
-      // Process batches of requests with retries and delays
       const batchSize = 10;
       for (let i = 0; i < batchRequests.length; i += batchSize) {
         const batch = batchRequests.slice(i, i + batchSize);
 
-        try {
-          const batchResponse = await axios.post(
-            `https://graph.facebook.com/v17.0/`,
-            { batch },
-            { params: { access_token: USER_ACCESS_TOKEN } }
-          );
+        let retryCount = 0;
+        const maxRetries = 3;
 
-          batchResponse.data.forEach((response, index) => {
-            if (response.code === 200) {
-              const leads = JSON.parse(response.body).data;
+        while (retryCount <= maxRetries) {
+          try {
+            const batchResponse = await axios.post(
+              `https://graph.facebook.com/v17.0/`,
+              { batch },
+              { params: { access_token: USER_ACCESS_TOKEN } }
+            );
 
-              leads.forEach((lead) => {
-                console.log(
-                  `Lead for Page: ${page.name} (ID: ${page.id})`,
-                  JSON.stringify(lead, null, 2)
+            batchResponse.data.forEach((response, index) => {
+              if (response.code === 200) {
+                const leads = JSON.parse(response.body).data;
+
+                leads.forEach((lead) => {
+                  console.log(
+                    `Lead for Page: ${page.name} (ID: ${page.id})`,
+                    JSON.stringify(lead, null, 2)
+                  );
+                });
+
+                if (leads.length > 0) {
+                  lastFetchedTime = leads[leads.length - 1].created_time;
+                  saveLastFetchedTime();
+                }
+              } else {
+                console.error(
+                  `Error in batched response for Form ID: ${batch[index].relative_url}`,
+                  response.body
                 );
-              });
-
-              if (leads.length > 0) {
-                lastFetchedTime = leads[leads.length - 1].created_time;
-                saveLastFetchedTime();
               }
-            } else {
-              console.error(
-                `Error in batched response for Form ID: ${batch[index].relative_url}`,
-                response.body
-              );
-            }
-          });
-        } catch (error) {
-          console.error(
-            `Error in processing batch for Page: ${page.name} (ID: ${page.id})`,
-            error.response?.data || error.message
-          );
+            });
 
-          // Retry the batch after a delay
-          await new Promise((resolve) => setTimeout(resolve, 5000));
-          i -= batchSize; // Retry this batch
+            // Break the retry loop if successful
+            break;
+          } catch (error) {
+            console.error(
+              `Error in batch for Page: ${page.name} (ID: ${page.id}), Retry: ${retryCount + 1}`,
+              error.response?.data || error.message
+            );
+
+            retryCount++;
+            if (retryCount > maxRetries) {
+              console.error("Max retries reached. Skipping this batch.");
+              break;
+            }
+
+            // Exponential backoff
+            await new Promise((resolve) => setTimeout(resolve, 2000 * retryCount));
+          }
         }
       }
     }
@@ -139,7 +151,6 @@ const fetchAllLeads = async () => {
     console.error("Error fetching pages or leads:", error.response?.data || error.message);
   }
 };
-
 
 
 loadLastFetchedTime();
