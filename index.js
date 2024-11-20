@@ -6,8 +6,12 @@ const fs = require("fs");
 const app = express();
 app.use(bodyParser.json()); // Parse incoming request bodies as JSON
 
-const VERIFY_TOKEN = "my_verify_token"; // Token to verify the webhook
-const USER_ACCESS_TOKEN = "EAAHEnds0DWQBO5BpFeEmoqDLFK2PZCayVQYwWZBaPzX9zE69EH9IKv78M13qWPVneAdhBGgFSWSfORoOz92fSqrSzZARH5Fa4St6atOeDYZAijpkrxPcfZA05aCZCXTiMpP7rrGQSAtFG8m2RLkJAcSgrZA750BBcpRUOUCODA7R7lLpZAfQuke7kg2IAye7jHa4tjGp12XZC6zROPZCMERJYZD"; // Replace with your User Access Token
+const VERIFY_TOKEN = "my_verify_token";
+const APP_ID = "497657243241828"; // App ID from your screenshot
+const APP_SECRET = "6f6668bec23b20a09790e34f2d142f64"; // App secret from your screenshot
+
+let USER_ACCESS_TOKEN =
+  "EAAHEnds0DWQBO5BpFeEmoqDLFK2PZCayVQYwWZBaPzX9zE69EH9IKv78M13qWPVneAdhBGgFSWSfORoOz92fSqrSzZARH5Fa4St6atOeDYZAijpkrxPcfZA05aCZCXTiMpP7rrGQSAtFG8m2RLkJAcSgrZA750BBcpRUOUCODA7R7lLpZAfQuke7kg2IAye7jHa4tjGp12XZC6zROPZCMERJYZD"; // Replace with your provided short-lived token
 
 // Track the last fetched time for leads
 let lastFetchedTime = null;
@@ -26,7 +30,23 @@ const saveLastFetchedTime = () => {
   fs.writeFileSync("lastFetchedTime.txt", lastFetchedTime);
 };
 
-// 1. Verify the Webhook when Meta sends a GET request
+// Refresh short-lived token to long-lived token
+const refreshAccessToken = async () => {
+  try {
+    console.log("Refreshing access token...");
+    const response = await axios.get(
+      `https://graph.facebook.com/v17.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${USER_ACCESS_TOKEN}`
+    );
+
+    USER_ACCESS_TOKEN = response.data.access_token;
+    console.log("Access token refreshed successfully:", USER_ACCESS_TOKEN);
+  } catch (error) {
+    console.error("Error refreshing access token:", error.response?.data || error.message);
+    throw new Error("Failed to refresh access token.");
+  }
+};
+
+// Verify the Webhook when Meta sends a GET request
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -41,7 +61,7 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-// 2. Listen for POST requests from Meta
+// Listen for POST requests from Meta
 app.post("/webhook", async (req, res) => {
   const body = req.body;
 
@@ -51,9 +71,8 @@ app.post("/webhook", async (req, res) => {
       console.log(`Processing entry: ${JSON.stringify(entry, null, 2)}`);
       for (const change of entry.changes) {
         if (change.field === "leadgen") {
-          const { leadgen_id: leadgenId, form_id: formId, page_id: pageId } = change.value;
-
-          console.log(`Received leadgen ID: ${leadgenId} from Page ID: ${pageId}`);
+          const { leadgen_id: leadgenId } = change.value;
+          console.log(`Received leadgen ID: ${leadgenId}`);
 
           try {
             const leadData = await getLeadData(leadgenId);
@@ -71,7 +90,7 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// Function to Fetch Lead Data by Lead ID
+// Fetch Lead Data by Lead ID
 const getLeadData = async (leadgenId) => {
   try {
     console.log(`Fetching lead data for Leadgen ID: ${leadgenId}`);
@@ -80,6 +99,11 @@ const getLeadData = async (leadgenId) => {
     );
     return response.data;
   } catch (error) {
+    if (error.response?.data?.error?.code === 190) {
+      console.log("Access token expired. Refreshing token...");
+      await refreshAccessToken();
+      return getLeadData(leadgenId); // Retry after refreshing token
+    }
     console.error("Error fetching lead data:", error.response?.data || error.message);
     throw new Error("Failed to fetch lead data.");
   }
@@ -88,7 +112,7 @@ const getLeadData = async (leadgenId) => {
 // Fetch All Pages, Forms, and Leads
 const fetchAllLeads = async () => {
   try {
-    console.log("Fetching all pages linked to the user.");
+    console.log("Fetching all pages linked to the user...");
     const pagesResponse = await axios.get(
       `https://graph.facebook.com/v17.0/me/accounts?fields=id,name,access_token&access_token=${USER_ACCESS_TOKEN}`
     );
@@ -97,8 +121,8 @@ const fetchAllLeads = async () => {
     console.log(`Found ${pages.length} pages. Fetching leads...`);
 
     for (const page of pages) {
-      const pageAccessToken = page.access_token;
       console.log(`Fetching forms for Page: ${page.name} (ID: ${page.id})`);
+      const pageAccessToken = page.access_token;
 
       const formsResponse = await axios.get(
         `https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${pageAccessToken}`
@@ -109,36 +133,60 @@ const fetchAllLeads = async () => {
 
       for (const form of forms) {
         console.log(`Fetching leads for Form ID: ${form.id}`);
-        const leadsResponse = await axios.get(
-          `https://graph.facebook.com/v17.0/${form.id}/leads?access_token=${pageAccessToken}`
-        );
-        const leads = leadsResponse.data.data;
 
-        console.log(`Found ${leads.length} leads for Form ID: ${form.id}.`);
+        const params = {
+          access_token: pageAccessToken,
+          filtering: lastFetchedTime
+            ? JSON.stringify([
+                {
+                  field: "created_time",
+                  operator: "GREATER_THAN",
+                  value: lastFetchedTime,
+                },
+              ])
+            : undefined,
+        };
 
-        for (const lead of leads) {
-          const leadData = {
-            pageId: page.id,
-            pageName: page.name,
-            formId: form.id,
-            leadId: lead.id,
-            createdTime: lead.created_time,
-            fieldData: lead.field_data,
-          };
+        try {
+          const leadsResponse = await axios.get(
+            `https://graph.facebook.com/v17.0/${form.id}/leads`,
+            { params }
+          );
+          const leads = leadsResponse.data.data;
 
-          console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
-        }
+          console.log(`Found ${leads.length} leads for Form ID: ${form.id}.`);
 
-        if (leads.length > 0) {
-          const latestLeadTime = leads[leads.length - 1].created_time;
-          lastFetchedTime = new Date(latestLeadTime).toISOString();
-          saveLastFetchedTime();
-          console.log(`Updated lastFetchedTime to: ${lastFetchedTime}`);
+          for (const lead of leads) {
+            const leadData = {
+              pageId: page.id,
+              pageName: page.name,
+              formId: form.id,
+              leadId: lead.id,
+              createdTime: lead.created_time,
+              fieldData: lead.field_data,
+            };
+
+            console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
+          }
+
+          if (leads.length > 0) {
+            const latestLeadTime = leads[leads.length - 1].created_time;
+            lastFetchedTime = new Date(latestLeadTime).toISOString();
+            saveLastFetchedTime();
+            console.log(`Updated lastFetchedTime to: ${lastFetchedTime}`);
+          }
+        } catch (error) {
+          console.error("Error fetching leads:", error.response?.data || error.message);
         }
       }
     }
   } catch (error) {
-    console.error("Error fetching pages, forms, or leads:", error.response?.data || error.message);
+    if (error.response?.data?.error?.code === 190) {
+      console.log("Access token expired. Refreshing token...");
+      await refreshAccessToken();
+      return fetchAllLeads(); // Retry after refreshing token
+    }
+    console.error("Error fetching pages or leads:", error.response?.data || error.message);
   }
 };
 
