@@ -13,19 +13,22 @@ let USER_ACCESS_TOKEN = "EAAHEnds0DWQBO5BpFeEmoqDLFK2PZCayVQYwWZBaPzX9zE69EH9IKv
 
 let lastFetchedTime = null;
 
+// Load the last fetched time from a file
 const loadLastFetchedTime = () => {
   if (fs.existsSync("lastFetchedTime.txt")) {
     lastFetchedTime = fs.readFileSync("lastFetchedTime.txt", "utf-8");
+    console.log("Loaded last fetched time:", lastFetchedTime);
   } else {
     lastFetchedTime = null;
   }
 };
 
+// Save the last fetched time to a file
 const saveLastFetchedTime = () => {
   fs.writeFileSync("lastFetchedTime.txt", lastFetchedTime);
 };
 
-// Function to Refresh Access Token
+// Refresh Access Token
 const refreshAccessToken = async () => {
   try {
     console.log("Refreshing access token...");
@@ -35,7 +38,7 @@ const refreshAccessToken = async () => {
     USER_ACCESS_TOKEN = response.data.access_token;
     console.log("Access token refreshed:", USER_ACCESS_TOKEN);
   } catch (error) {
-    console.error("Failed to refresh access token:", error.response?.data || error.message);
+    console.error("Error refreshing access token:", error.response?.data || error.message);
     throw new Error("Access token refresh failed.");
   }
 };
@@ -87,9 +90,9 @@ const getLeadData = async (leadgenId) => {
     return response.data;
   } catch (error) {
     if (error.response?.data?.error?.code === 190) {
-      console.log("Token expired. Refreshing token...");
+      console.log("Access token expired. Refreshing...");
       await refreshAccessToken();
-      return getLeadData(leadgenId); // Retry with refreshed token
+      return getLeadData(leadgenId);
     }
     throw error;
   }
@@ -116,10 +119,14 @@ const fetchAllLeads = async () => {
 
         for (const form of forms) {
           console.log(`Fetching leads for Form ID: ${form.id}`);
+
+          let url = `https://graph.facebook.com/v17.0/${form.id}/leads?access_token=${pageAccessToken}`;
+          if (lastFetchedTime) {
+            url += `&filtering=[{"field":"created_time","operator":"GREATER_THAN","value":"${lastFetchedTime}"}]`;
+          }
+
           try {
-            const leadsResponse = await axios.get(
-              `https://graph.facebook.com/v17.0/${form.id}/leads?access_token=${pageAccessToken}`
-            );
+            const leadsResponse = await axios.get(url);
             const leads = leadsResponse.data.data;
 
             for (const lead of leads) {
@@ -140,9 +147,9 @@ const fetchAllLeads = async () => {
     }
   } catch (error) {
     if (error.response?.data?.error?.code === 190) {
-      console.log("Access token expired. Refreshing token...");
+      console.log("Access token expired. Refreshing...");
       await refreshAccessToken();
-      return fetchAllLeads(); // Retry after refreshing token
+      return fetchAllLeads();
     }
     console.error("Error fetching pages:", error.response?.data || error.message);
   }
