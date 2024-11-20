@@ -7,7 +7,7 @@ app.use(bodyParser.json()); // Parse incoming request bodies as JSON
 
 const VERIFY_TOKEN = "my_verify_token"; // Token to verify the webhook
 const USER_ACCESS_TOKEN =
-  "EAAHEnds0DWQBOZBwfP9h2hcOkD9KaIZCZCwtOKZByp5zoUlY3Mm2oJnALMLGAnZBVq7VR2jVraG94TMvM75rWQiZBjiHyfoHjLOglP9I43r816Nf1qB1M59UfUvAoOw0yzZAgQxPholfZBcvL3NwIi17b8Wb20EmyBkDKyoVr353urZCFcaMrhmeD1y1zffEzUcKk"; // Replace with your User Access Token
+  "EAAHEnds0DWQBO8Tr7jyEqPLCZBxnP2hkoepm5ODZAnY0mGXRenneSyIo1gj3fWiDxZCypL9j1ynZC01kUFoaDFdmHNqMiM0Gm8mpL1hQfGHHkThNbNU8Lz7DfdXkX8SgQR8kzzx6OKMFNmHnA2CtagUnj9Vp09nmX5GaB435E5dYK7Qcm14i36eZBzMTeKWW2RsBGt5xLtJbRzur2mAZDZD"; // Replace with your User Access Token
 
 // 1. Verify the Webhook when Meta sends a GET request
 app.get("/webhook", (req, res) => {
