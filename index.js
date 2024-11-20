@@ -76,27 +76,19 @@ const fetchAllLeads = async () => {
       );
       const forms = formsResponse.data.data;
 
-      // Prepare batch requests
       const batchRequests = forms.map((form) => {
         let relativeUrl = `${form.id}/leads?access_token=${pageAccessToken}`;
         if (lastFetchedTime) {
           relativeUrl += `&filtering=[{"field":"created_time","operator":"GREATER_THAN","value":"${lastFetchedTime}"}]`;
         }
-        return {
-          method: "GET",
-          relative_url: relativeUrl,
-        };
+        return { method: "GET", relative_url: relativeUrl };
       });
 
-      // Break into smaller chunks to avoid API limits
+      // Process batches of requests with retries and delays
       const batchSize = 10;
-      const batches = [];
       for (let i = 0; i < batchRequests.length; i += batchSize) {
-        batches.push(batchRequests.slice(i, i + batchSize));
-      }
+        const batch = batchRequests.slice(i, i + batchSize);
 
-      // Process each batch with delays
-      for (const batch of batches) {
         try {
           const batchResponse = await axios.post(
             `https://graph.facebook.com/v17.0/`,
@@ -126,8 +118,15 @@ const fetchAllLeads = async () => {
               );
             }
           });
-        } catch (batchError) {
-          console.error("Error executing batch:", batchError.response?.data || batchError.message);
+        } catch (error) {
+          console.error(
+            `Error in processing batch for Page: ${page.name} (ID: ${page.id})`,
+            error.response?.data || error.message
+          );
+
+          // Retry the batch after a delay
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+          i -= batchSize; // Retry this batch
         }
       }
     }
@@ -140,6 +139,7 @@ const fetchAllLeads = async () => {
     console.error("Error fetching pages or leads:", error.response?.data || error.message);
   }
 };
+
 
 
 loadLastFetchedTime();
