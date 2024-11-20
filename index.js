@@ -13,7 +13,7 @@ let USER_ACCESS_TOKEN = "EAAHEnds0DWQBO5BpFeEmoqDLFK2PZCayVQYwWZBaPzX9zE69EH9IKv
 
 let lastFetchedTime = null;
 
-// Load the last fetched time from a file
+// Load last fetched time
 const loadLastFetchedTime = () => {
   if (fs.existsSync("lastFetchedTime.txt")) {
     lastFetchedTime = fs.readFileSync("lastFetchedTime.txt", "utf-8");
@@ -23,7 +23,7 @@ const loadLastFetchedTime = () => {
   }
 };
 
-// Save the last fetched time to a file
+// Save last fetched time
 const saveLastFetchedTime = () => {
   fs.writeFileSync("lastFetchedTime.txt", lastFetchedTime);
 };
@@ -94,6 +94,11 @@ const getLeadData = async (leadgenId) => {
       await refreshAccessToken();
       return getLeadData(leadgenId);
     }
+    if (error.response?.data?.error?.code === 1) {
+      console.error("Temporary API error. Retrying in a few seconds...");
+      await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait for 5 seconds
+      return getLeadData(leadgenId);
+    }
     throw error;
   }
 };
@@ -109,7 +114,7 @@ const fetchAllLeads = async () => {
 
     for (const page of pages) {
       const pageAccessToken = page.access_token;
-      console.log(`Fetching forms for Page: ${page.name}`);
+      console.log(`Fetching forms for Page: ${page.name} (ID: ${page.id})`);
 
       try {
         const formsResponse = await axios.get(
