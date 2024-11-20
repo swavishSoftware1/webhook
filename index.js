@@ -125,97 +125,92 @@ const getPageDetails = async (pageId) => {
 
 // Fetch All Pages and Their Latest Leads
 const fetchAllLeads = async () => {
-  try {
-    console.log("Fetching all pages linked to the user.");
-    const pagesResponse = await axios.get(
-      `https://graph.facebook.com/v17.0/me/accounts?fields=id,name,access_token&access_token=${USER_ACCESS_TOKEN}`
-    );
-    const pages = pagesResponse.data.data;
+    try {
+        console.log("Fetching all pages linked to the user.");
+        const pagesResponse = await axios.get(
+            `https://graph.facebook.com/v17.0/me/accounts?fields=id,name,access_token&access_token=${USER_ACCESS_TOKEN}`
+        );
+        const pages = pagesResponse.data.data;
 
-    console.log(`Found ${pages.length} pages. Fetching leads...`);
+        console.log(`Found ${pages.length} pages. Fetching leads...`);
 
-    for (const page of pages) {
-      console.log(`Fetching leads for Page: ${page.name} (ID: ${page.id})`);
+        for (const page of pages) {
+            console.log(`Fetching leads for Page: ${page.name} (ID: ${page.id})`);
 
-      // Fetch leadgen forms for the Page
-      const formsResponse = await axios.get(
-        `https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${page.access_token}`
-      );
-      const forms = formsResponse.data.data;
-
-      console.log(`Found ${forms.length} forms for Page: ${page.name}.`);
-
-      for (const form of forms) {
-        console.log(`Fetching leads for Form ID: ${form.id}`);
-
-        let retryCount = 0;
-        const maxRetries = 3;
-
-        while (retryCount < maxRetries) {
-          try {
-            // Build the filtering query for new leads
-            const params = {
-              access_token: page.access_token,
-              filtering: lastFetchedTime
-                ? JSON.stringify([
-                    {
-                      field: "created_time",
-                      operator: "GREATER_THAN",
-                      value: lastFetchedTime,
-                    },
-                  ])
-                : undefined,
-            };
-
-            // Fetch leads
-            const leadsResponse = await axios.get(
-              `https://graph.facebook.com/v17.0/${form.id}/leads`,
-              { params }
+            const formsResponse = await axios.get(
+                `https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${page.access_token}`
             );
-            const leads = leadsResponse.data.data;
+            const forms = formsResponse.data.data;
 
-            console.log(`Found ${leads.length} new leads for Form ID: ${form.id}.`);
+            console.log(`Found ${forms.length} forms for Page: ${page.name}.`);
 
-            for (const lead of leads) {
-              const leadData = {
-                pageId: page.id,
-                pageName: page.name,
-                formId: form.id,
-                leadId: lead.id,
-                createdTime: lead.created_time,
-                fieldData: lead.field_data,
-              };
+            for (const form of forms) {
+                console.log(`Fetching leads for Form ID: ${form.id}`);
 
-              console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
+                let retryCount = 0;
+                const maxRetries = 3;
+
+                while (retryCount < maxRetries) {
+                    try {
+                        const params = {
+                            access_token: page.access_token,
+                            filtering: lastFetchedTime
+                                ? JSON.stringify([
+                                      {
+                                          field: "created_time",
+                                          operator: "GREATER_THAN_OR_EQUAL",
+                                          value: lastFetchedTime,
+                                      },
+                                  ])
+                                : undefined,
+                        };
+
+                        console.log(`Request URL: https://graph.facebook.com/v17.0/${form.id}/leads`);
+                        console.log(`Request Parameters: ${JSON.stringify(params, null, 2)}`);
+
+                        const leadsResponse = await axios.get(
+                            `https://graph.facebook.com/v17.0/${form.id}/leads`,
+                            { params }
+                        );
+                        const leads = leadsResponse.data.data;
+
+                        console.log(`Found ${leads.length} new leads for Form ID: ${form.id}.`);
+
+                        for (const lead of leads) {
+                            console.log("Fetched Lead Data:", JSON.stringify(lead, null, 2));
+                        }
+
+                        if (leads.length > 0) {
+                            const latestLeadTime = leads[leads.length - 1].created_time;
+                            lastFetchedTime = new Date(latestLeadTime).toISOString();
+                            saveLastFetchedTime();
+                            console.log(`Updated lastFetchedTime to: ${lastFetchedTime}`);
+                        }
+                        break; // Exit retry loop on success
+                    } catch (error) {
+                        retryCount++;
+                        const fbTraceId = error.response?.data?.error?.fbtrace_id || "N/A";
+                        console.error(
+                            `Error fetching leads (Attempt ${retryCount}): ${
+                                error.response?.data?.error?.message || "Unknown error"
+                            } (fbtrace_id: ${fbTraceId})`
+                        );
+
+                        if (retryCount === maxRetries) {
+                            console.error("Max retries reached. Skipping this form.");
+                        } else {
+                            console.log("Retrying...");
+                            await delay(retryCount * 1000); // Exponential backoff
+                        }
+                    }
+                }
             }
-
-            // Update last fetched time
-            if (leads.length > 0) {
-              const latestLeadTime = leads[leads.length - 1].created_time;
-              lastFetchedTime = new Date(latestLeadTime).toISOString();
-              saveLastFetchedTime(); // Save the updated time
-              console.log(`Updated lastFetchedTime to: ${lastFetchedTime}`);
-            }
-
-            break; // Exit retry loop on success
-          } catch (error) {
-            retryCount++;
-            console.error(`Error fetching leads (Attempt ${retryCount}):`, error.response?.data || error.message);
-
-            if (retryCount === maxRetries) {
-              console.error("Max retries reached. Skipping this form.");
-            } else {
-              console.log("Retrying...");
-              await new Promise((resolve) => setTimeout(resolve, retryCount * 1000)); // Exponential backoff
-            }
-          }
         }
-      }
+    } catch (error) {
+        console.error("Error fetching pages or leads:", error.response?.data || error.message);
     }
-  } catch (error) {
-    console.error("Error fetching pages or leads:", error.response?.data || error.message);
-  }
 };
+
 
 
 
