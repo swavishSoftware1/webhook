@@ -76,23 +76,26 @@ const fetchAllLeads = async () => {
       );
       const forms = formsResponse.data.data;
 
-      // Prepare batch requests for leads
-      const batchRequests = forms.map((form) => ({
-        method: "GET",
-        relative_url: `${form.id}/leads?access_token=${pageAccessToken}${
-          lastFetchedTime
-            ? `&filtering=[{"field":"created_time","operator":"GREATER_THAN","value":"${lastFetchedTime}"}]`
-            : ""
-        }`,
-      }));
+      // Prepare batch requests
+      const batchRequests = forms.map((form) => {
+        let relativeUrl = `${form.id}/leads?access_token=${pageAccessToken}`;
+        if (lastFetchedTime) {
+          relativeUrl += `&filtering=[{"field":"created_time","operator":"GREATER_THAN","value":"${lastFetchedTime}"}]`;
+        }
+        return {
+          method: "GET",
+          relative_url: relativeUrl,
+        };
+      });
 
-      // Split into smaller batches (if needed)
-      const batches = [];
+      // Break into smaller chunks to avoid API limits
       const batchSize = 10;
+      const batches = [];
       for (let i = 0; i < batchRequests.length; i += batchSize) {
         batches.push(batchRequests.slice(i, i + batchSize));
       }
 
+      // Process each batch with delays
       for (const batch of batches) {
         try {
           const batchResponse = await axios.post(
@@ -104,11 +107,10 @@ const fetchAllLeads = async () => {
           batchResponse.data.forEach((response, index) => {
             if (response.code === 200) {
               const leads = JSON.parse(response.body).data;
-              console.log(`Leads for Form ${batch[index].relative_url}:`, leads);
 
               leads.forEach((lead) => {
                 console.log(
-                  `Lead for Page ${page.name} (ID: ${page.id}):`,
+                  `Lead for Page: ${page.name} (ID: ${page.id})`,
                   JSON.stringify(lead, null, 2)
                 );
               });
@@ -118,7 +120,10 @@ const fetchAllLeads = async () => {
                 saveLastFetchedTime();
               }
             } else {
-              console.error("Error in batched response:", response.body);
+              console.error(
+                `Error in batched response for Form ID: ${batch[index].relative_url}`,
+                response.body
+              );
             }
           });
         } catch (batchError) {
@@ -127,9 +132,15 @@ const fetchAllLeads = async () => {
       }
     }
   } catch (error) {
-    console.error("Error fetching pages:", error.response?.data || error.message);
+    if (error.response?.data?.error?.code === 190) {
+      console.log("Access token expired. Refreshing...");
+      await refreshAccessToken();
+      return fetchAllLeads(); // Retry after refreshing token
+    }
+    console.error("Error fetching pages or leads:", error.response?.data || error.message);
   }
 };
+
 
 loadLastFetchedTime();
 
