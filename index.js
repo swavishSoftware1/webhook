@@ -27,7 +27,7 @@ const saveLastFetchedTime = () => {
   fs.writeFileSync("lastFetchedTime.txt", lastFetchedTime);
 };
 
-// Helper function to add delay for retries
+// Helper function to add delay
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // 1. Verify the Webhook when Meta sends a GET request
@@ -150,63 +150,51 @@ const fetchAllLeads = async () => {
       for (const form of forms) {
         console.log(`Fetching leads for Form ID: ${form.id}`);
 
-        let retryCount = 0;
-        const maxRetries = 3;
+        try {
+          const params = {
+            access_token: page.access_token,
+            filtering: lastFetchedTime
+              ? JSON.stringify([
+                  {
+                    field: "created_time",
+                    operator: "GREATER_THAN",
+                    value: lastFetchedTime,
+                  },
+                ])
+              : undefined,
+          };
 
-        while (retryCount < maxRetries) {
-          try {
-            const params = {
-              access_token: page.access_token,
-              filtering: lastFetchedTime
-                ? JSON.stringify([
-                    {
-                      field: "created_time",
-                      operator: "GREATER_THAN",
-                      value: lastFetchedTime,
-                    },
-                  ])
-                : undefined,
+          const leadsResponse = await axios.get(
+            `https://graph.facebook.com/v17.0/${form.id}/leads`,
+            { params }
+          );
+          const leads = leadsResponse.data.data;
+
+          console.log(`Found ${leads.length} new leads for Form ID: ${form.id}.`);
+
+          for (const lead of leads) {
+            const leadData = {
+              pageId: page.id,
+              pageName: page.name,
+              formId: form.id,
+              leadId: lead.id,
+              createdTime: lead.created_time,
+              fieldData: lead.field_data,
             };
 
-            const leadsResponse = await axios.get(
-              `https://graph.facebook.com/v17.0/${form.id}/leads`,
-              { params }
-            );
-            const leads = leadsResponse.data.data;
-
-            console.log(`Found ${leads.length} new leads for Form ID: ${form.id}.`);
-
-            for (const lead of leads) {
-              const leadData = {
-                pageId: page.id,
-                pageName: page.name,
-                formId: form.id,
-                leadId: lead.id,
-                createdTime: lead.created_time,
-                fieldData: lead.field_data,
-              };
-
-              console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
-            }
-
-            if (leads.length > 0) {
-              const latestLeadTime = leads[leads.length - 1].created_time;
-              lastFetchedTime = new Date(latestLeadTime).toISOString();
-              saveLastFetchedTime();
-              console.log(`Updated lastFetchedTime to: ${lastFetchedTime}`);
-            }
-            break; // Exit retry loop on success
-          } catch (error) {
-            retryCount++;
-            console.error(`Error fetching leads (Attempt ${retryCount}):`, error.response?.data || error.message);
-
-            if (retryCount === maxRetries) {
-              console.error("Max retries reached. Skipping this form.");
-            } else {
-              console.log("Retrying...");
-              await delay(retryCount * 1000); // Exponential backoff
-            }
+            console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
           }
+
+          if (leads.length > 0) {
+            const latestLeadTime = leads[leads.length - 1].created_time;
+            lastFetchedTime = new Date(latestLeadTime).toISOString();
+            saveLastFetchedTime();
+            console.log(`Updated lastFetchedTime to: ${lastFetchedTime}`);
+          }
+        } catch (error) {
+          console.error("Error fetching leads:", error.response?.data || error.message);
+          console.log("Waiting 30 seconds before continuing...");
+          await delay(30000); // Wait for 30 seconds
         }
       }
     }
