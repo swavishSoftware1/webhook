@@ -27,9 +27,6 @@ const saveLastFetchedTime = () => {
   fs.writeFileSync("lastFetchedTime.txt", lastFetchedTime);
 };
 
-// Helper function to add delay
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
 // 1. Verify the Webhook when Meta sends a GET request
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
@@ -69,7 +66,6 @@ app.post("/webhook", async (req, res) => {
             console.log("Page Details:");
             console.log(JSON.stringify(pageDetails, null, 2));
 
-            // Log the processed lead data
             const processedLead = {
               formId,
               leadgenId,
@@ -193,8 +189,6 @@ const fetchAllLeads = async () => {
           }
         } catch (error) {
           console.error("Error fetching leads:", error.response?.data || error.message);
-          console.log("Waiting 30 seconds before continuing...");
-          await delay(30000); // Wait for 30 seconds
         }
       }
     }
