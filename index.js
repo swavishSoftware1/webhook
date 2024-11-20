@@ -6,7 +6,8 @@ const app = express();
 app.use(bodyParser.json()); // Parse incoming request bodies as JSON
 
 const VERIFY_TOKEN = "my_verify_token"; // Token to verify the webhook
-const USER_ACCESS_TOKEN = "EAAHEnds0DWQBOZBwfP9h2hcOkD9KaIZCZCwtOKZByp5zoUlY3Mm2oJnALMLGAnZBVq7VR2jVraG94TMvM75rWQiZBjiHyfoHjLOglP9I43r816Nf1qB1M59UfUvAoOw0yzZAgQxPholfZBcvL3NwIi17b8Wb20EmyBkDKyoVr353urZCFcaMrhmeD1y1zffEzUcKk"; // Replace with your User Access Token
+const USER_ACCESS_TOKEN =
+  "EAAHEnds0DWQBOZBwfP9h2hcOkD9KaIZCZCwtOKZByp5zoUlY3Mm2oJnALMLGAnZBVq7VR2jVraG94TMvM75rWQiZBjiHyfoHjLOglP9I43r816Nf1qB1M59UfUvAoOw0yzZAgQxPholfZBcvL3NwIi17b8Wb20EmyBkDKyoVr353urZCFcaMrhmeD1y1zffEzUcKk"; // Replace with your User Access Token
 
 // 1. Verify the Webhook when Meta sends a GET request
 app.get("/webhook", (req, res) => {
@@ -15,8 +16,10 @@ app.get("/webhook", (req, res) => {
   const challenge = req.query["hub.challenge"];
 
   if (mode && token === VERIFY_TOKEN) {
+    console.log("Webhook verified successfully.");
     res.status(200).send(challenge);
   } else {
+    console.error("Webhook verification failed.");
     res.status(403).send("Verification failed");
   }
 });
@@ -26,7 +29,9 @@ app.post("/webhook", async (req, res) => {
   const body = req.body;
 
   if (body.object === "page") {
+    console.log("Webhook event received for 'page' object.");
     for (const entry of body.entry) {
+      console.log(`Processing entry: ${JSON.stringify(entry, null, 2)}`);
       for (const change of entry.changes) {
         if (change.field === "leadgen") {
           const { leadgen_id: leadgenId, form_id: formId, page_id: pageId } = change.value;
@@ -37,16 +42,14 @@ app.post("/webhook", async (req, res) => {
             const leadData = await getLeadData(leadgenId);
             const pageDetails = await getPageDetails(pageId);
 
-            // Log fetched data for debugging
-            console.log("Lead Data Fetched from Meta:");
+            console.log("Lead Data Fetched:");
             console.log(JSON.stringify(leadData, null, 2));
 
             console.log("Page Details:");
             console.log(JSON.stringify(pageDetails, null, 2));
 
-            /*
-            // Prepare the lead data for saving to MongoDB
-            const newLead = {
+            // Log the processed lead data
+            const processedLead = {
               formId,
               leadgenId,
               pageId,
@@ -60,53 +63,69 @@ app.post("/webhook", async (req, res) => {
               createdTime: leadData.created_time,
             };
 
-            console.log("Prepared Lead Data:", JSON.stringify(newLead, null, 2));
-            */
+            console.log("Processed Lead Data:", JSON.stringify(processedLead, null, 2));
           } catch (error) {
-            console.error("Error fetching lead data:", error.message);
+            console.error("Error fetching lead data:", error.response?.data || error.message);
           }
         }
       }
     }
     res.status(200).send("EVENT_RECEIVED");
   } else {
+    console.error("Webhook event object is not 'page'. Ignoring.");
     res.status(404).send("Nothing Found");
   }
 });
 
 // Function to Fetch Lead Data by Lead ID
 const getLeadData = async (leadgenId) => {
-  const response = await axios.get(
-    `https://graph.facebook.com/v17.0/${leadgenId}?access_token=${USER_ACCESS_TOKEN}`
-  );
-  return response.data;
+  try {
+    console.log(`Fetching lead data for Leadgen ID: ${leadgenId}`);
+    const response = await axios.get(
+      `https://graph.facebook.com/v17.0/${leadgenId}?access_token=${USER_ACCESS_TOKEN}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching lead data:", error.response?.data || error.message);
+    throw new Error("Failed to fetch lead data.");
+  }
 };
 
 // Function to Fetch Page Details
 const getPageDetails = async (pageId) => {
-  const response = await axios.get(
-    `https://graph.facebook.com/v17.0/${pageId}?fields=name&access_token=${USER_ACCESS_TOKEN}`
-  );
-  return response.data;
+  try {
+    console.log(`Fetching details for Page ID: ${pageId}`);
+    const response = await axios.get(
+      `https://graph.facebook.com/v17.0/${pageId}?fields=name&access_token=${USER_ACCESS_TOKEN}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching page details:", error.response?.data || error.message);
+    throw new Error("Failed to fetch page details.");
+  }
 };
 
 // Fetch All Pages and Their Leads
 const fetchAllLeads = async () => {
   try {
-    // Fetch all Pages linked to the User Access Token
+    console.log("Fetching all pages linked to the user.");
     const pagesResponse = await axios.get(
       `https://graph.facebook.com/v17.0/me/accounts?fields=id,name&access_token=${USER_ACCESS_TOKEN}`
     );
     const pages = pagesResponse.data.data;
 
+    console.log(`Found ${pages.length} pages. Fetching leads...`);
+
     for (const page of pages) {
-      console.log(`Fetching leads for Page: ${page.name}`);
+      console.log(`Fetching leads for Page: ${page.name} (ID: ${page.id})`);
 
       // Fetch leadgen forms for the Page
       const formsResponse = await axios.get(
         `https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${USER_ACCESS_TOKEN}`
       );
       const forms = formsResponse.data.data;
+
+      console.log(`Found ${forms.length} forms for Page: ${page.name}.`);
 
       for (const form of forms) {
         console.log(`Fetching leads for Form ID: ${form.id}`);
@@ -115,33 +134,18 @@ const fetchAllLeads = async () => {
         const leadsResponse = await axios.get(
           `https://graph.facebook.com/v17.0/${form.id}/leads?access_token=${USER_ACCESS_TOKEN}`
         );
+        const leads = leadsResponse.data.data;
 
-        for (const lead of leadsResponse.data.data) {
+        console.log(`Found ${leads.length} leads for Form ID: ${form.id}.`);
+
+        for (const lead of leads) {
           console.log("Fetched Lead Data:");
           console.log(JSON.stringify(lead, null, 2));
-
-          /*
-          const newLead = {
-            formId: form.id,
-            leadgenId: lead.id,
-            pageId: page.id,
-            pageName: page.name,
-            fullName:
-              lead.field_data.find((field) => field.name === "full_name")?.values[0] || "N/A",
-            email: lead.field_data.find((field) => field.name === "email")?.values[0] || "N/A",
-            phoneNumber:
-              lead.field_data.find((field) => field.name === "phone_number")?.values[0] || "N/A",
-            createdTime: lead.created_time,
-          };
-
-          console.log("Prepared Lead Data for Saving:");
-          console.log(JSON.stringify(newLead, null, 2));
-          */
         }
       }
     }
   } catch (error) {
-    console.error("Error fetching pages or leads:", error.message);
+    console.error("Error fetching pages or leads:", error.response?.data || error.message);
   }
 };
 
