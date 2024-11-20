@@ -98,30 +98,71 @@ const fetchAllLeads = async () => {
         );
         const forms = formsResponse.data.data;
 
-        for (const form of forms) {
-          console.log(`Fetching leads for Form ID: ${form.id}`);
-          let leadsUrl = `https://graph.facebook.com/v17.0/${form.id}/leads?access_token=${pageAccessToken}`;
+        const batchRequests = forms.map((form) => {
+          let relativeUrl = `${form.id}/leads?access_token=${pageAccessToken}`;
           if (lastFetchedTime) {
-            leadsUrl += `&filtering=[{"field":"created_time","operator":"GREATER_THAN","value":"${lastFetchedTime}"}]`;
+            relativeUrl += `&filtering=[{"field":"created_time","operator":"GREATER_THAN","value":"${lastFetchedTime}"}]`;
           }
+          return { method: "GET", relative_url: relativeUrl };
+        });
 
-          try {
-            const leadsResponse = await axios.get(leadsUrl);
-            const leads = leadsResponse.data.data;
+        const batchSize = 10; // Limit the batch size
+        for (let i = 0; i < batchRequests.length; i += batchSize) {
+          const batch = batchRequests.slice(i, i + batchSize);
 
-            if (leads.length > 0) {
-              console.log(`Leads for Page: ${page.name} (ID: ${page.id}):`);
-              leads.forEach((lead) => console.log(JSON.stringify(lead, null, 2)));
-              lastFetchedTime = leads[leads.length - 1].created_time;
-              saveLastFetchedTime();
-            } else {
-              console.log(`No new leads for Form ID: ${form.id}`);
+          let retryCount = 0;
+          const maxRetries = 3;
+
+          while (retryCount <= maxRetries) {
+            try {
+              const batchResponse = await axios.post(
+                `https://graph.facebook.com/v17.0/`,
+                { batch },
+                { params: { access_token: USER_ACCESS_TOKEN } }
+              );
+
+              batchResponse.data.forEach((response, index) => {
+                if (response.code === 200) {
+                  const leads = JSON.parse(response.body).data;
+
+                  if (leads.length > 0) {
+                    leads.forEach((lead) => {
+                      console.log(
+                        `Lead for Page: ${page.name} (ID: ${page.id}):`,
+                        JSON.stringify(lead, null, 2)
+                      );
+                    });
+
+                    lastFetchedTime = leads[leads.length - 1].created_time;
+                    saveLastFetchedTime();
+                  } else {
+                    console.log(`No new leads for Form ID: ${batch[index].relative_url}`);
+                  }
+                } else {
+                  console.error(
+                    `Error in batched response for Form ID: ${batch[index].relative_url}`,
+                    response.body
+                  );
+                }
+              });
+
+              // Break the retry loop if successful
+              break;
+            } catch (error) {
+              console.error(
+                `Error in batch for Page: ${page.name} (ID: ${page.id}), Retry: ${retryCount + 1}`,
+                error.response?.data || error.message
+              );
+
+              retryCount++;
+              if (retryCount > maxRetries) {
+                console.error("Max retries reached. Skipping this batch.");
+                break;
+              }
+
+              // Exponential backoff
+              await new Promise((resolve) => setTimeout(resolve, 2000 * retryCount));
             }
-          } catch (leadError) {
-            console.error(
-              `Error fetching leads for Form ID: ${form.id}:`,
-              leadError.response?.data || leadError.message
-            );
           }
         }
       } catch (formError) {
@@ -141,10 +182,10 @@ const fetchAllLeads = async () => {
   }
 };
 
-
-
+// Load last fetched time
 loadLastFetchedTime();
 
+// Start the server and fetch leads
 app.listen(5000, () => {
   console.log("Server running on port 5000.");
   fetchAllLeads();
