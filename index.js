@@ -34,12 +34,23 @@ const refreshAccessToken = async () => {
   try {
     console.log("Refreshing access token...");
     const response = await axios.get(
-      `https://graph.facebook.com/v17.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${USER_ACCESS_TOKEN}`
+      `https://graph.facebook.com/v17.0/oauth/access_token`,
+      {
+        params: {
+          grant_type: "fb_exchange_token",
+          client_id: APP_ID,
+          client_secret: APP_SECRET,
+          fb_exchange_token: USER_ACCESS_TOKEN,
+        },
+      }
     );
     USER_ACCESS_TOKEN = response.data.access_token;
-    console.log("Access token refreshed:", USER_ACCESS_TOKEN);
+    console.log("Access token refreshed successfully:", USER_ACCESS_TOKEN);
   } catch (error) {
-    console.error("Failed to refresh access token:", error.response?.data || error.message);
+    console.error(
+      "Failed to refresh access token:",
+      error.response?.data || error.message
+    );
     throw new Error("Access token refresh failed.");
   }
 };
