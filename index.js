@@ -7,9 +7,9 @@ const app = express();
 app.use(bodyParser.json());
 
 const VERIFY_TOKEN = "my_verify_token";
-const APP_ID = "497657243241828"; // App ID
-const APP_SECRET = "6f6668bec23b20a09790e34f2d142f64"; // App Secret
-let USER_ACCESS_TOKEN = "EAAHEnds0DWQBO0uzyeR2HxOeZByf3ZAcy4n27szvVQbP8XnJ3xyPd9aBRrvzGxZCeYL6S6qwIUFZBv1xRQV15GCtAWtvuViJ9OxUHtjmAab2oDz867rwzCM3L3hZCFKf2mZCKfiWoAK73BUlgb7igXHz5wCNy0ZB9e77e9moa5czHNZBMIwIA7LhN6QvQKwTy6eOwtwV6He6QZAKZCfSyGXgZDZD"; // Short-lived token
+const APP_ID = "497657243241828";
+const APP_SECRET = "6f6668bec23b20a09790e34f2d142f64";
+let USER_ACCESS_TOKEN = "EAAHEnds0DWQBO..."; // Short-lived token
 
 let lastFetchedTime = null;
 
@@ -26,7 +26,6 @@ const saveLastFetchedTime = () => {
   fs.writeFileSync("lastFetchedTime.txt", lastFetchedTime);
 };
 
-// Function to Refresh Access Token
 const refreshAccessToken = async () => {
   try {
     console.log("Refreshing access token...");
@@ -41,7 +40,6 @@ const refreshAccessToken = async () => {
   }
 };
 
-// Verify Webhook
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -55,7 +53,6 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-// Handle Webhook Events
 app.post("/webhook", async (req, res) => {
   const body = req.body;
 
@@ -66,20 +63,32 @@ app.post("/webhook", async (req, res) => {
           const { leadgen_id: leadgenId } = change.value;
           try {
             const leadData = await getLeadData(leadgenId);
-            console.log("Lead Data:", JSON.stringify(leadData, null, 2));
+            console.log("Lead Data (Facebook):", JSON.stringify(leadData, null, 2));
+            console.log("Source: Facebook Page");
           } catch (error) {
             console.error("Error fetching lead data:", error.message);
           }
         }
       }
     }
-    res.status(200).send("EVENT_RECEIVED");
-  } else {
-    res.status(404).send("Not Found");
+  } else if (body.object === "whatsapp_business_account") {
+    for (const entry of body.entry) {
+      for (const message of entry.messages || []) {
+        console.log("Lead Data (WhatsApp):", JSON.stringify(message, null, 2));
+        console.log("Source: WhatsApp");
+      }
+    }
+  } else if (body.object === "instagram") {
+    for (const entry of body.entry) {
+      for (const message of entry.messaging || []) {
+        console.log("Lead Data (Instagram):", JSON.stringify(message, null, 2));
+        console.log("Source: Instagram");
+      }
+    }
   }
+  res.status(200).send("EVENT_RECEIVED");
 });
 
-// Fetch Lead Data
 const getLeadData = async (leadgenId) => {
   try {
     const response = await axios.get(
@@ -90,13 +99,12 @@ const getLeadData = async (leadgenId) => {
     if (error.response?.data?.error?.code === 190) {
       console.log("Token expired. Refreshing token...");
       await refreshAccessToken();
-      return getLeadData(leadgenId); // Retry with refreshed token
+      return getLeadData(leadgenId);
     }
     throw error;
   }
 };
 
-// Fetch All Pages, Forms, and Leads
 const fetchAllLeads = async () => {
   try {
     console.log("Fetching all pages linked to the user.");
@@ -139,13 +147,7 @@ const fetchAllLeads = async () => {
 
           console.log(`Page: ${page.name} (ID: ${page.id})`);
           console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
-        }
-
-        if (leads.length > 0) {
-          const latestLeadTime = leads[leads.length - 1].created_time;
-          lastFetchedTime = new Date(latestLeadTime).toISOString();
-          saveLastFetchedTime();
-          console.log(`Updated lastFetchedTime to: ${lastFetchedTime}`);
+          console.log("Source: Facebook Page");
         }
       }
     }
@@ -153,7 +155,6 @@ const fetchAllLeads = async () => {
     console.error("Error fetching pages, forms, or leads:", error.response?.data || error.message);
   }
 };
-
 
 loadLastFetchedTime();
 
