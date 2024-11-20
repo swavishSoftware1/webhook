@@ -149,13 +149,24 @@ const fetchAllLeads = async () => {
         console.log(`Fetching leads for Form ID: ${form.id}`);
 
         // Build the filtering query for new leads
-        let url = `https://graph.facebook.com/v17.0/${form.id}/leads?access_token=${page.access_token}`;
-        if (lastFetchedTime) {
-          url += `&filtering=[{"field":"created_time","operator":">","value":"${lastFetchedTime}"}]`;
-        }
+        const params = {
+          access_token: page.access_token,
+          filtering: lastFetchedTime
+            ? JSON.stringify([
+                {
+                  field: "created_time",
+                  operator: "GREATER_THAN",
+                  value: lastFetchedTime,
+                },
+              ])
+            : undefined,
+        };
 
         // Fetch leads
-        const leadsResponse = await axios.get(url);
+        const leadsResponse = await axios.get(
+          `https://graph.facebook.com/v17.0/${form.id}/leads`,
+          { params }
+        );
         const leads = leadsResponse.data.data;
 
         console.log(`Found ${leads.length} new leads for Form ID: ${form.id}.`);
@@ -186,6 +197,7 @@ const fetchAllLeads = async () => {
     console.error("Error fetching pages or leads:", error.response?.data || error.message);
   }
 };
+
 
 // Load last fetched time on server startup
 loadLastFetchedTime();
