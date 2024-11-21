@@ -200,7 +200,7 @@ const fetchAllLeads = async () => {
           };
 
           console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
-          await sendToConversionAPI(leadData); // Send to CAPI
+          //await sendToConversionAPI(leadData); // Send to CAPI
         }
       }
     }
