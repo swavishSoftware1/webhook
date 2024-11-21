@@ -142,9 +142,13 @@ const fetchFormsAndLeads = async (pageId) => {
       params: { access_token: USER_ACCESS_TOKEN, fields: "id,name" },
     });
 
+    console.log("Leadgen Forms Response:", JSON.stringify(response.data, null, 2)); // Debug forms response
+
     const forms = response.data.data || [];
     const lastSyncTime = getLastSyncTime();
-    const now = Math.floor(Date.now() / 1000);
+    console.log("Last Sync Time:", lastSyncTime ? new Date(lastSyncTime * 1000).toISOString() : "First Run");
+
+    const now = Math.floor(Date.now() / 1000); // Current timestamp in seconds
 
     if (forms.length === 0) {
       console.log(`No leadgen forms found for Page ID: ${pageId}`);
@@ -156,20 +160,22 @@ const fetchFormsAndLeads = async (pageId) => {
 
       const leads = await fetchLeads(form.id, lastSyncTime);
 
+      console.log(`Fetched Leads for Form ${form.id}:`, JSON.stringify(leads, null, 2)); // Debug leads response
+
       if (leads.length === 0) {
         console.log(`No leads found for Form: ${form.name} (ID: ${form.id})`);
       } else {
-        console.log(`Fetched ${leads.length} leads for Form: ${form.name} (ID: ${form.id})`);
-        const metadata = await fetchMetadata(null, null, pageId);
+        const metadata = await fetchMetadata(null, null, pageId); // Add ad_id and adgroup_id if needed
         await processLeads(leads, metadata, form.name);
       }
     }
 
-    saveLastSyncTime(now);
+    saveLastSyncTime(now); // Update sync time
   } catch (error) {
     console.error("Error fetching forms and leads:", error.message);
   }
 };
+
 
 // Webhook Verification
 app.get("/webhook", (req, res) => {
