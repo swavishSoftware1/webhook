@@ -22,14 +22,14 @@ const hashValue = (value) => crypto.createHash("sha256").update(value).digest("h
 // Get last sync time
 const getLastSyncTime = () => {
   if (fs.existsSync(SYNC_FILE)) {
-    return fs.readFileSync(SYNC_FILE, "utf8");
+    return parseInt(fs.readFileSync(SYNC_FILE, "utf8"), 10);
   }
   return null; // First run
 };
 
 // Save last sync time
 const saveLastSyncTime = (time) => {
-  fs.writeFileSync(SYNC_FILE, time, "utf8");
+  fs.writeFileSync(SYNC_FILE, time.toString(), "utf8");
 };
 
 // Refresh or regenerate access token
@@ -47,13 +47,8 @@ const refreshAccessToken = async () => {
     USER_ACCESS_TOKEN = response.data.access_token;
     console.log("Access token refreshed successfully:", USER_ACCESS_TOKEN);
   } catch (error) {
-    if (error.response?.data?.error?.code === 190) {
-      console.log("Access token expired. Regenerating...");
-      await regenerateAccessToken();
-    } else {
-      console.error("Failed to refresh access token:", error.response?.data || error.message);
-      throw new Error("Access token refresh failed.");
-    }
+    console.error("Failed to refresh access token:", error.response?.data || error.message);
+    await regenerateAccessToken();
   }
 };
 
@@ -100,15 +95,20 @@ const fetchMetadata = async (adId, adGroupId, pageId) => {
   }
 };
 
-// Fetch all leads for a form
+// Fetch all leads for a form, optionally filtered by last sync time
 const fetchLeads = async (formId, since = null) => {
   try {
     const params = { access_token: USER_ACCESS_TOKEN };
+
     if (since) {
+      console.log(`Fetching leads created since: ${new Date(since * 1000).toISOString()}`);
       params.filtering = JSON.stringify([{ field: "time_created", operator: "GREATER_THAN", value: since }]);
+    } else {
+      console.log("Fetching all historical leads (first run).");
     }
+
     const response = await axios.get(`https://graph.facebook.com/v17.0/${formId}/leads`, { params });
-    return response.data.data;
+    return response.data.data || [];
   } catch (error) {
     console.error("Error fetching leads:", error.response?.data || error.message);
     throw error;
@@ -135,39 +135,16 @@ const processLeads = async (leads, metadata, formName) => {
   }
 };
 
-// Fetch forms and their leads
-// Fetch all leads for a form, optionally filtered by last sync time
-const fetchLeads = async (formId, since = null) => {
-  try {
-    const params = { access_token: USER_ACCESS_TOKEN };
-
-    // If this is not the first run, add filtering based on last sync time
-    if (since) {
-      console.log(`Fetching leads created since: ${new Date(since * 1000).toISOString()}`);
-      params.filtering = JSON.stringify([{ field: "time_created", operator: "GREATER_THAN", value: since }]);
-    } else {
-      console.log("Fetching all historical leads (first run).");
-    }
-
-    const response = await axios.get(`https://graph.facebook.com/v17.0/${formId}/leads`, { params });
-    return response.data.data || [];
-  } catch (error) {
-    console.error("Error fetching leads:", error.response?.data || error.message);
-    throw error;
-  }
-};
-
 // Fetch forms and their leads for a page
 const fetchFormsAndLeads = async (pageId) => {
   try {
-    // Fetch leadgen forms for the page
     const response = await axios.get(`https://graph.facebook.com/v17.0/${pageId}/leadgen_forms`, {
       params: { access_token: USER_ACCESS_TOKEN, fields: "id,name" },
     });
 
     const forms = response.data.data || [];
     const lastSyncTime = getLastSyncTime();
-    const now = Math.floor(Date.now() / 1000); // Current timestamp in seconds
+    const now = Math.floor(Date.now() / 1000);
 
     if (forms.length === 0) {
       console.log(`No leadgen forms found for Page ID: ${pageId}`);
@@ -177,19 +154,17 @@ const fetchFormsAndLeads = async (pageId) => {
     for (const form of forms) {
       console.log(`Processing Form: ${form.name} (ID: ${form.id})`);
 
-      // Fetch leads for the form
       const leads = await fetchLeads(form.id, lastSyncTime);
 
       if (leads.length === 0) {
         console.log(`No leads found for Form: ${form.name} (ID: ${form.id})`);
       } else {
         console.log(`Fetched ${leads.length} leads for Form: ${form.name} (ID: ${form.id})`);
-        const metadata = await fetchMetadata(null, null, pageId); // Add ad_id and adgroup_id if needed
+        const metadata = await fetchMetadata(null, null, pageId);
         await processLeads(leads, metadata, form.name);
       }
     }
 
-    // Update last sync time after processing all forms
     saveLastSyncTime(now);
   } catch (error) {
     console.error("Error fetching forms and leads:", error.message);
