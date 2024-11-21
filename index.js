@@ -10,20 +10,24 @@ app.use(bodyParser.json());
 const VERIFY_TOKEN = "my_verify_token";
 const APP_ID = "497657243241828";
 const APP_SECRET = "6f6668bec23b20a09790e34f2d142f64";
-let USER_ACCESS_TOKEN =
-  "EAAHEnds0DWQBO4mcEnmEqujrItW7SIoEqqXxHeCetNwW2TeZAb6FOtlZCxZB3NtuHZB8x7GTUHhjmTkuM4oXOnPcobKssMN21GRBIdIsH5ZAZBe72FTnaQ0vh5WEouYi58YZBjUjjqUZAoXtiWxASHXi5ldoIPdA0jOUzX9rKpHiZACcQce2BnZBQzPSxd292R1WO2MrZATMyDO7yVv7ZBZCtxgZDZD";
+let USER_ACCESS_TOKEN = "EAAHEnds0DWQBO4mcEnmEqujrItW7SIoEqqXxHeCetNwW2TeZAb6FOtlZCxZB3NtuHZB8x7GTUHhjmTkuM4oXOnPcobKssMN21GRBIdIsH5ZAZBe72FTnaQ0vh5WEouYi58YZBjUjjqUZAoXtiWxASHXi5ldoIPdA0jOUzX9rKpHiZACcQce2BnZBQzPSxd292R1WO2MrZATMyDO7yVv7ZBZCtxgZDZD";
 
-const PIXEL_IDS = ["500781749465576"]; // Replace with your Pixel IDs
+const PIXEL_ID = "500781749465576"; // Replace with your Pixel ID
+const CAPI_URL = `https://graph.facebook.com/v17.0/${PIXEL_ID}/events`;
+
+let lastFetchedTime = null;
 
 const loadLastFetchedTime = () => {
   if (fs.existsSync("lastFetchedTime.txt")) {
-    return fs.readFileSync("lastFetchedTime.txt", "utf-8");
+    lastFetchedTime = fs.readFileSync("lastFetchedTime.txt", "utf-8");
+    console.log("lastFetchedTime", lastFetchedTime);
+  } else {
+    lastFetchedTime = null;
   }
-  return null;
 };
 
-const saveLastFetchedTime = (time) => {
-  fs.writeFileSync("lastFetchedTime.txt", time);
+const saveLastFetchedTime = () => {
+  fs.writeFileSync("lastFetchedTime.txt", lastFetchedTime);
 };
 
 const hashValue = (value) => {
@@ -40,59 +44,81 @@ const refreshAccessToken = async () => {
     console.log("Access token refreshed:", USER_ACCESS_TOKEN);
   } catch (error) {
     console.error("Failed to refresh access token:", error.response?.data || error.message);
+    throw new Error("Access token refresh failed.");
   }
 };
 
 const parseFieldData = (fieldData) => {
   const parsedData = {};
   fieldData.forEach((field) => {
-    parsedData[field.name] = field.values[0] || null;
+    parsedData[field.name] = field.values[0] || null; // Safely get field value
   });
   return parsedData;
 };
 
 const sendToConversionAPI = async (leadData) => {
-  for (const pixelId of PIXEL_IDS) {
-    try {
-      const payload = {
-        data: [
-          {
-            event_name: "Lead",
-            event_time: Math.floor(new Date(leadData.createdTime).getTime() / 1000),
-            action_source: "website",
-            user_data: {
-              em: hashValue(leadData.email || ""),
-              ph: hashValue(leadData.phone_number || ""),
-              fn: hashValue(leadData.full_name?.split(" ")[0] || ""),
-              ln: hashValue(leadData.full_name?.split(" ")[1] || ""),
-            },
-            custom_data: {
-              form_id: leadData.formId,
-              page_id: leadData.pageId,
-              page_name: leadData.pageName,
-              location: leadData.location || "",
-              utm_source: leadData.utm_source || "",
-              product_interest: leadData.product_interest || "",
-            },
-            event_id: `${pixelId}-${leadData.leadId}`,
-          },
-        ],
-      };
+  try {
+    const payload = {
+      data: [
+        {
+          event_name: "Lead",
+          event_time: Math.floor(new Date(leadData.createdTime).getTime() / 1000),
+          action_source: "website",
+          user_data: Object.entries(leadData).reduce((userData, [key, value]) => {
+            if (["email", "phone_number", "first_name", "last_name"].includes(key)) {
+              userData[key.substring(0, 2)] = hashValue(value || ""); // Hash email, phone, etc.
+            }
+            return userData;
+          }, {}),
+          custom_data: leadData, // Include all dynamically fetched fields
+          event_id: leadData.leadId, // Unique event ID
+        },
+      ],
+    };
 
-      const response = await axios.post(
-        `https://graph.facebook.com/v17.0/${pixelId}/events`,
-        payload,
-        { params: { access_token: USER_ACCESS_TOKEN } }
-      );
-      console.log(`Sent to Pixel ID ${pixelId}:`, response.data);
-    } catch (error) {
-      console.error(
-        `Error sending to Pixel ID ${pixelId}:`,
-        error.response?.data || error.message
-      );
-    }
+    const response = await axios.post(CAPI_URL, payload, {
+      params: { access_token: USER_ACCESS_TOKEN },
+    });
+    console.log("Sent to Conversion API:", response.data);
+  } catch (error) {
+    console.error("Error sending to Conversion API:", error.response?.data || error.message);
   }
 };
+
+app.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode && token === VERIFY_TOKEN) {
+    console.log("Webhook verified successfully.");
+    res.status(200).send(challenge);
+  } else {
+    res.status(403).send("Verification failed.");
+  }
+});
+
+app.post("/webhook", async (req, res) => {
+  const body = req.body;
+
+  if (body.object === "page") {
+    for (const entry of body.entry) {
+      for (const change of entry.changes) {
+        if (change.field === "leadgen") {
+          const { leadgen_id: leadgenId } = change.value;
+          try {
+            const leadData = await getLeadData(leadgenId);
+            console.log("Lead Data (Facebook):", JSON.stringify(leadData, null, 2));
+            await sendToConversionAPI(leadData);
+          } catch (error) {
+            console.error("Error fetching lead data:", error.message);
+          }
+        }
+      }
+    }
+  }
+  res.status(200).send("EVENT_RECEIVED");
+});
 
 const getLeadData = async (leadgenId) => {
   try {
@@ -108,7 +134,7 @@ const getLeadData = async (leadgenId) => {
       pageId: leadData.page_id,
       pageName: leadData.page_name,
       createdTime: leadData.created_time,
-      ...parsedFields,
+      ...parsedFields, // Include all dynamic fields
     };
   } catch (error) {
     if (error.response?.data?.error?.code === 190) {
@@ -120,39 +146,7 @@ const getLeadData = async (leadgenId) => {
   }
 };
 
-app.get("/webhook", (req, res) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
-
-  if (mode && token === VERIFY_TOKEN) {
-    res.status(200).send(challenge);
-  } else {
-    res.status(403).send("Verification failed.");
-  }
-});
-
-app.post("/webhook", async (req, res) => {
-  const body = req.body;
-
-  if (body.object === "page") {
-    for (const entry of body.entry) {
-      for (const change of entry.changes) {
-        if (change.field === "leadgen") {
-          const leadgenId = change.value.leadgen_id;
-          try {
-            const leadData = await getLeadData(leadgenId);
-            console.log("Lead Data:", JSON.stringify(leadData, null, 2));
-            await sendToConversionAPI(leadData);
-          } catch (error) {
-            console.error("Error fetching lead data:", error.message);
-          }
-        }
-      }
-    }
-  }
-  res.status(200).send("EVENT_RECEIVED");
-});
+loadLastFetchedTime();
 
 app.listen(5000, () => {
   console.log("Server running on port 5000.");
