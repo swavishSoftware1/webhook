@@ -14,7 +14,7 @@ let USER_ACCESS_TOKEN =
   "EAAHEnds0DWQBO4mcEnmEqujrItW7SIoEqqXxHeCetNwW2TeZAb6FOtlZCxZB3NtuHZB8x7GTUHhjmTkuM4oXOnPcobKssMN21GRBIdIsH5ZAZBe72FTnaQ0vh5WEouYi58YZBjUjjqUZAoXtiWxASHXi5ldoIPdA0jOUzX9rKpHiZACcQce2BnZBQzPSxd292R1WO2MrZATMyDO7yVv7ZBZCtxgZDZD"; // Short-lived token
 
 const PIXEL_ID = "500781749465576"; // Replace with your Pixel ID
-const CAPI_URL = https://graph.facebook.com/v17.0/${PIXEL_ID}/events;
+const CAPI_URL = `https://graph.facebook.com/v17.0/${PIXEL_ID}/events`;
 
 let lastFetchedTime = null;
 
@@ -28,6 +28,7 @@ const loadLastFetchedTime = () => {
   }
 };
 
+// Save last fetched time
 const saveLastFetchedTime = () => {
   fs.writeFileSync("lastFetchedTime.txt", lastFetchedTime);
 };
@@ -42,7 +43,7 @@ const refreshAccessToken = async () => {
   try {
     console.log("Refreshing access token...");
     const response = await axios.get(
-      https://graph.facebook.com/v17.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${USER_ACCESS_TOKEN}
+      `https://graph.facebook.com/v17.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${USER_ACCESS_TOKEN}`
     );
     USER_ACCESS_TOKEN = response.data.access_token;
     console.log("Access token refreshed:", USER_ACCESS_TOKEN);
@@ -137,7 +138,7 @@ app.post("/webhook", async (req, res) => {
 const getLeadData = async (leadgenId) => {
   try {
     const response = await axios.get(
-      https://graph.facebook.com/v17.0/${leadgenId}?access_token=${USER_ACCESS_TOKEN}
+      `https://graph.facebook.com/v17.0/${leadgenId}?access_token=${USER_ACCESS_TOKEN}`
     );
     const leadData = response.data;
     const parsedFields = parseFieldData(leadData.field_data);
@@ -160,58 +161,8 @@ const getLeadData = async (leadgenId) => {
   }
 };
 
-// Fetch all leads
-const fetchAllLeads = async () => {
-  try {
-    console.log("Fetching all pages linked to the user.");
-    const pagesResponse = await axios.get(
-      https://graph.facebook.com/v17.0/me/accounts?fields=id,name,access_token&access_token=${USER_ACCESS_TOKEN}
-    );
-    const pages = pagesResponse.data.data;
-
-    console.log(Found ${pages.length} pages. Fetching leads...);
-
-    for (const page of pages) {
-      const pageAccessToken = page.access_token;
-      console.log(Fetching forms for Page: ${page.name} (ID: ${page.id}));
-
-      const formsResponse = await axios.get(
-        https://graph.facebook.com/v17.0/${page.id}/leadgen_forms?access_token=${pageAccessToken}
-      );
-      const forms = formsResponse.data.data;
-
-      console.log(Found ${forms.length} forms for Page: ${page.name}.);
-
-      for (const form of forms) {
-        console.log(Fetching leads for Form ID: ${form.id});
-        const leadsResponse = await axios.get(
-          https://graph.facebook.com/v17.0/${form.id}/leads?access_token=${pageAccessToken}
-        );
-        const leads = leadsResponse.data.data;
-
-        for (const lead of leads) {
-          const leadData = {
-            pageId: page.id,
-            pageName: page.name,
-            formId: form.id,
-            leadId: lead.id,
-            createdTime: lead.created_time,
-            fieldData: lead.field_data,
-          };
-
-          console.log("Fetched Lead Data:", JSON.stringify(leadData, null, 2));
-          await sendToConversionAPI(leadData); // Send to CAPI
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Error fetching pages, forms, or leads:", error.response?.data || error.message);
-  }
-};
-
 loadLastFetchedTime();
 
 app.listen(5000, () => {
   console.log("Server running on port 5000.");
-  fetchAllLeads();
 });
