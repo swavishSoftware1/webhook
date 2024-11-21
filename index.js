@@ -11,7 +11,6 @@ app.use(bodyParser.json());
 const VERIFY_TOKEN = "my_verify_token"; // Replace with your webhook verification token
 const APP_ID = "497657243241828"; // Your App ID
 const APP_SECRET = "6f6668bec23b20a09790e34f2d142f64"; // Your App Secret
-const PIXEL_ID = "500781749465576"; // Your Pixel ID
 let USER_ACCESS_TOKEN =
   "EAAHEnds0DWQBO5081rvol3YOETWgDiNZBEEVIJJgoE0Ino5Uz8Nh5qTAvStTZAiBMxBFKf3TZCrsMZAACk5bquQuysjCcpEKnA3rAzRPHWXfxzqusJ5wbN6gDv1upRrJK0ZBgoVkjgjlZBhRZA9K71j6ktVn9LTZBH82TDP5mZCdDJBg2qkiMISX2zl8e"; // Replace with a valid token
 const SYNC_FILE = "lastSyncTime.txt";
@@ -32,10 +31,10 @@ const saveLastSyncTime = (time) => {
   fs.writeFileSync(SYNC_FILE, time.toString(), "utf8");
 };
 
-// Refresh or regenerate access token
+// Refresh or regenerate User Access Token
 const refreshAccessToken = async () => {
   try {
-    console.log("Refreshing access token...");
+    console.log("Refreshing User Access Token...");
     const response = await axios.get(`https://graph.facebook.com/v17.0/oauth/access_token`, {
       params: {
         grant_type: "fb_exchange_token",
@@ -45,48 +44,40 @@ const refreshAccessToken = async () => {
       },
     });
     USER_ACCESS_TOKEN = response.data.access_token;
-    console.log("Access token refreshed successfully:", USER_ACCESS_TOKEN);
+    console.log("User Access Token refreshed successfully.");
   } catch (error) {
-    console.error("Failed to refresh access token:", error.response?.data || error.message);
-    await regenerateAccessToken();
+    console.error("Failed to refresh User Access Token:", error.response?.data || error.message);
+    throw new Error("Access token refresh failed.");
   }
 };
 
-const regenerateAccessToken = async () => {
+// Fetch Page Access Token
+const getPageAccessToken = async (pageId) => {
   try {
-    console.log("Regenerating a new access token...");
-    const response = await axios.get(`https://graph.facebook.com/v17.0/oauth/access_token`, {
-      params: {
-        client_id: APP_ID,
-        client_secret: APP_SECRET,
-        grant_type: "client_credentials",
-      },
-    });
-    USER_ACCESS_TOKEN = response.data.access_token;
-    console.log("Access token regenerated successfully:", USER_ACCESS_TOKEN);
-  } catch (error) {
-    console.error("Failed to regenerate access token:", error.response?.data || error.message);
-    throw new Error("Access token regeneration failed.");
-  }
-};
-
-// Fetch all pages associated with the app
-const fetchPages = async () => {
-  try {
+    console.log(`Fetching Page Access Token for Page ID: ${pageId}`);
     const response = await axios.get(`https://graph.facebook.com/v17.0/me/accounts`, {
-      params: { access_token: USER_ACCESS_TOKEN, fields: "id,name" },
+      params: { access_token: USER_ACCESS_TOKEN, fields: "id,name,access_token" },
     });
-    return response.data.data || [];
+
+    const pages = response.data.data;
+    const page = pages.find((p) => p.id === pageId);
+
+    if (!page) {
+      throw new Error(`No access to page with ID: ${pageId}`);
+    }
+
+    console.log(`Page Access Token for Page ID ${pageId}: ${page.access_token}`);
+    return page.access_token;
   } catch (error) {
-    console.error("Error fetching pages:", error.response?.data || error.message);
-    return [];
+    console.error("Error fetching Page Access Token:", error.response?.data || error.message);
+    throw error;
   }
 };
 
 // Fetch all leads for a form, optionally filtered by last sync time
-const fetchLeads = async (formId, since = null) => {
+const fetchLeads = async (formId, pageAccessToken, since = null) => {
   try {
-    const params = { access_token: USER_ACCESS_TOKEN };
+    const params = { access_token: pageAccessToken };
 
     if (since) {
       console.log(`Fetching leads created since: ${new Date(since * 1000).toISOString()}`);
@@ -107,8 +98,8 @@ const fetchLeads = async (formId, since = null) => {
 const processLeads = async (leads, pageName, formName) => {
   for (const lead of leads) {
     try {
-      console.log("Lead Data:", lead);
       console.log(`Page Name: ${pageName}, Form Name: ${formName}`);
+      console.log("Lead Data:", lead);
 
       const parsedFields = {};
       lead.field_data.forEach((field) => {
@@ -125,8 +116,12 @@ const processLeads = async (leads, pageName, formName) => {
 // Fetch forms and their leads for a page
 const fetchFormsAndLeads = async (pageId, pageName) => {
   try {
+    // Fetch Page Access Token
+    const pageAccessToken = await getPageAccessToken(pageId);
+
+    // Fetch leadgen forms for the page
     const response = await axios.get(`https://graph.facebook.com/v17.0/${pageId}/leadgen_forms`, {
-      params: { access_token: USER_ACCESS_TOKEN, fields: "id,name" },
+      params: { access_token: pageAccessToken, fields: "id,name" },
     });
 
     const forms = response.data.data || [];
@@ -137,7 +132,7 @@ const fetchFormsAndLeads = async (pageId, pageName) => {
 
     for (const form of forms) {
       console.log(`Processing Form: ${form.name} (ID: ${form.id})`);
-      const leads = await fetchLeads(form.id, lastSyncTime);
+      const leads = await fetchLeads(form.id, pageAccessToken, lastSyncTime);
       await processLeads(leads, pageName, form.name);
     }
 
@@ -150,7 +145,12 @@ const fetchFormsAndLeads = async (pageId, pageName) => {
 // Fetch historical leads on server startup
 const fetchHistoricalLeads = async () => {
   try {
-    const pages = await fetchPages();
+    console.log("Fetching historical leads...");
+    const response = await axios.get(`https://graph.facebook.com/v17.0/me/accounts`, {
+      params: { access_token: USER_ACCESS_TOKEN, fields: "id,name" },
+    });
+
+    const pages = response.data.data || [];
     if (pages.length === 0) {
       console.log("No pages found for the account.");
       return;
@@ -198,6 +198,5 @@ app.post("/webhook", async (req, res) => {
 // Start the Server
 app.listen(5000, async () => {
   console.log("Server is running on port 5000.");
-  console.log("Fetching historical leads...");
   await fetchHistoricalLeads(); // Fetch historical leads on startup
 });
