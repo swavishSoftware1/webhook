@@ -11,7 +11,7 @@ const VERIFY_TOKEN = "my_verify_token";
 const APP_ID = "497657243241828";
 const APP_SECRET = "6f6668bec23b20a09790e34f2d142f64";
 let USER_ACCESS_TOKEN =
-  "EAAHEnds0DWQBO4mcEnmEqujrItW7SIoEqqXxHeCetNwW2TeZAb6FOtlZCxZB3NtuHZB8x7GTUHhjmTkuM4oXOnPcobKssMN21GRBIdIsH5ZAZBe72FTnaQ0vh5WEouYi58YZBjUjjqUZAoXtiWxASHXi5ldoIPdA0jOUzX9rKpHiZACcQce2BnZBQzPSxd292R1WO2MrZATMyDO7yVv7ZBZCtxgZDZD"; // Short-lived token
+  "EAAHEnds0DWQBO0zGHAtJP0XryMXwMQa8GbcLyWC9rdsbf4ELZASWEZAUisSUqMlrHFfxl2Ox3ziMZAJufPZBRPUvlNKcgvQM2lIBwnCIuGQXcimk762AKm7yccQnL2SGl1mAkEeJYKJDx46sPl0bRX4XqXbya8TJN4js1KWRZAByHIIh0bwYW3Bqc1ird3LjIBbsAOLee3pjaVOFnZCgZDZD"; // Short-lived token
 
 const PIXEL_ID = "500781749465576"; // Replace with your Pixel ID
 const CAPI_URL = `https://graph.facebook.com/v17.0/${PIXEL_ID}/events`;
