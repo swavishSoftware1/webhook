@@ -7,14 +7,15 @@ const crypto = require("crypto");
 const app = express();
 app.use(bodyParser.json());
 
-const VERIFY_TOKEN = "my_verify_token";
-const APP_ID = "497657243241828";
-const APP_SECRET = "6f6668bec23b20a09790e34f2d142f64";
+// Configurations
+const VERIFY_TOKEN = "my_verify_token"; // Replace with your verification token
+const APP_ID = "497657243241828"; // Your App ID
+const APP_SECRET = "6f6668bec23b20a09790e34f2d142f64"; // Your App Secret
+const PIXEL_IDS = ["500781749465576"]; // Your Pixel IDs (can handle multiple IDs)
 let USER_ACCESS_TOKEN =
-  "EAAHEnds0DWQBO17mDLs91zXLOU79JBQHOD2UOFC9CQUEYzXjjukUjuk2srIljWZBmLwfUZBNK9jBDxAGipqiRSvBtdNtnOwkcymnlCXxZCBR7ljs1cLrNrB27zCYOoZCDZB4y23xQpdizAqqp3USrrxxsy2j1HIGZCANniA8crnVxggGNSF2o22RrTjJdfw0tMzXrkpC2HplXrl4hPuQZDZD";
+  "EAAHEnds0DWQBO17mDLs91zXLOU79JBQHOD2UOFC9CQUEYzXjjukUjuk2srIljWZBmLwfUZBNK9jBDxAGipqiRSvBtdNtnOwkcymnlCXxZCBR7ljs1cLrNrB27zCYOoZCDZB4y23xQpdizAqqp3USrrxxsy2j1HIGZCANniA8crnVxggGNSF2o22RrTjJdfw0tMzXrkpC2HplXrl4hPuQZDZD"; // Replace with your current token
 
-const PIXEL_IDS = ["500781749465576"]; // Replace with your Pixel IDs
-
+// Utility functions
 const loadLastFetchedTime = () => {
   if (fs.existsSync("lastFetchedTime.txt")) {
     return fs.readFileSync("lastFetchedTime.txt", "utf-8");
@@ -30,19 +31,29 @@ const hashValue = (value) => {
   return crypto.createHash("sha256").update(value).digest("hex");
 };
 
+// Refresh Access Token
 const refreshAccessToken = async () => {
   try {
     console.log("Refreshing access token...");
     const response = await axios.get(
-      `https://graph.facebook.com/v17.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${USER_ACCESS_TOKEN}`
+      `https://graph.facebook.com/v17.0/oauth/access_token`, {
+        params: {
+          grant_type: "fb_exchange_token",
+          client_id: APP_ID,
+          client_secret: APP_SECRET,
+          fb_exchange_token: USER_ACCESS_TOKEN,
+        },
+      }
     );
     USER_ACCESS_TOKEN = response.data.access_token;
     console.log("Access token refreshed:", USER_ACCESS_TOKEN);
   } catch (error) {
     console.error("Failed to refresh access token:", error.response?.data || error.message);
+    throw new Error("Access token refresh failed.");
   }
 };
 
+// Parse Lead Field Data
 const parseFieldData = (fieldData) => {
   const parsedData = {};
   fieldData.forEach((field) => {
@@ -51,6 +62,7 @@ const parseFieldData = (fieldData) => {
   return parsedData;
 };
 
+// Send Data to Facebook Conversion API
 const sendToConversionAPI = async (leadData) => {
   for (const pixelId of PIXEL_IDS) {
     try {
@@ -94,11 +106,19 @@ const sendToConversionAPI = async (leadData) => {
   }
 };
 
+// Fetch Lead Data from Facebook API
 const getLeadData = async (leadgenId) => {
   try {
     const response = await axios.get(
-      `https://graph.facebook.com/v17.0/${leadgenId}?access_token=${USER_ACCESS_TOKEN}`
+      `https://graph.facebook.com/v17.0/${leadgenId}`, {
+        params: { access_token: USER_ACCESS_TOKEN },
+      }
     );
+
+    if (!response.data) {
+      throw new Error(`Lead data not found for leadgen_id: ${leadgenId}`);
+    }
+
     const leadData = response.data;
     const parsedFields = parseFieldData(leadData.field_data);
 
@@ -115,11 +135,16 @@ const getLeadData = async (leadgenId) => {
       console.log("Token expired. Refreshing token...");
       await refreshAccessToken();
       return getLeadData(leadgenId);
+    } else if (error.response?.status === 400) {
+      console.error(`Error fetching lead data for leadgen_id: ${leadgenId}`, error.response.data);
+    } else {
+      console.error("Unexpected error fetching lead data:", error.response?.data || error.message);
     }
     throw error;
   }
 };
 
+// Webhook Verification
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -132,8 +157,11 @@ app.get("/webhook", (req, res) => {
   }
 });
 
+// Handle Webhook Events
 app.post("/webhook", async (req, res) => {
   const body = req.body;
+
+  console.log("Webhook Payload:", JSON.stringify(body, null, 2)); // Log full payload
 
   if (body.object === "page") {
     for (const entry of body.entry) {
@@ -154,6 +182,7 @@ app.post("/webhook", async (req, res) => {
   res.status(200).send("EVENT_RECEIVED");
 });
 
+// Start the Server
 app.listen(5000, () => {
   console.log("Server running on port 5000.");
 });
