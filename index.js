@@ -46,8 +46,27 @@ const refreshAccessToken = async () => {
     USER_ACCESS_TOKEN = response.data.access_token;
     console.log("User Access Token refreshed successfully.");
   } catch (error) {
-    console.error("Failed to refresh User Access Token:", error.response?.data || error.message);
-    throw new Error("Access token refresh failed.");
+    console.error("Failed to refresh User Access Token. Generating new app-level token...");
+    await generateAppAccessToken();
+  }
+};
+
+// Generate a new App-Level Access Token (fallback mechanism)
+const generateAppAccessToken = async () => {
+  try {
+    console.log("Generating new App Access Token...");
+    const response = await axios.get(`https://graph.facebook.com/v17.0/oauth/access_token`, {
+      params: {
+        client_id: APP_ID,
+        client_secret: APP_SECRET,
+        grant_type: "client_credentials",
+      },
+    });
+    USER_ACCESS_TOKEN = response.data.access_token;
+    console.log("App Access Token generated successfully.");
+  } catch (error) {
+    console.error("Failed to generate App Access Token:", error.response?.data || error.message);
+    throw new Error("App Access Token generation failed.");
   }
 };
 
@@ -114,9 +133,8 @@ const processLeads = async (leads, pageName, formName) => {
 };
 
 // Fetch forms and their leads for a page
-const fetchFormsAndLeads = async (pageId, pageName) => {
+const fetchFormsAndLeads = async (pageId, pageName, isHistorical = false) => {
   try {
-    // Fetch Page Access Token
     const pageAccessToken = await getPageAccessToken(pageId);
 
     // Fetch leadgen forms for the page
@@ -125,18 +143,14 @@ const fetchFormsAndLeads = async (pageId, pageName) => {
     });
 
     const forms = response.data.data || [];
-    const lastSyncTime = getLastSyncTime();
+    const lastSyncTime = isHistorical ? null : getLastSyncTime(); // Use null for historical data fetch
     console.log("Last Sync Time:", lastSyncTime ? new Date(lastSyncTime * 1000).toISOString() : "First Run");
-
-    const now = Math.floor(Date.now() / 1000); // Current timestamp in seconds
 
     for (const form of forms) {
       console.log(`Processing Form: ${form.name} (ID: ${form.id})`);
       const leads = await fetchLeads(form.id, pageAccessToken, lastSyncTime);
       await processLeads(leads, pageName, form.name);
     }
-
-    saveLastSyncTime(now); // Update sync time
   } catch (error) {
     console.error("Error fetching forms and leads:", error.message);
   }
@@ -158,8 +172,12 @@ const fetchHistoricalLeads = async () => {
 
     for (const page of pages) {
       console.log(`Fetching historical leads for Page: ${page.name} (ID: ${page.id})`);
-      await fetchFormsAndLeads(page.id, page.name);
+      await fetchFormsAndLeads(page.id, page.name, true); // Fetch all historical data
     }
+
+    const now = Math.floor(Date.now() / 1000);
+    saveLastSyncTime(now); // Update sync time after fetching all historical data
+    console.log("Historical data fetched. Sync time updated.");
   } catch (error) {
     console.error("Error fetching historical leads:", error.message);
   }
