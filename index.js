@@ -70,28 +70,16 @@ const regenerateAccessToken = async () => {
   }
 };
 
-// Fetch Metadata for Pages, Campaigns, and Ads
-const fetchMetadata = async (adId, adGroupId, pageId) => {
+// Fetch all pages associated with the app
+const fetchPages = async () => {
   try {
-    const adResponse = await axios.get(`https://graph.facebook.com/v17.0/${adId}`, {
-      params: { access_token: USER_ACCESS_TOKEN, fields: "name" },
+    const response = await axios.get(`https://graph.facebook.com/v17.0/me/accounts`, {
+      params: { access_token: USER_ACCESS_TOKEN, fields: "id,name" },
     });
-    const campaignResponse = await axios.get(`https://graph.facebook.com/v17.0/${adGroupId}`, {
-      params: { access_token: USER_ACCESS_TOKEN, fields: "name" },
-    });
-    const pageResponse = await axios.get(`https://graph.facebook.com/v17.0/${pageId}`, {
-      params: { access_token: USER_ACCESS_TOKEN, fields: "name,category" },
-    });
-
-    return {
-      adName: adResponse.data.name || "Unknown Ad",
-      campaignName: campaignResponse.data.name || "Unknown Campaign",
-      pageName: pageResponse.data.name || "Unknown Page",
-      pageCategory: pageResponse.data.category || "Unknown Category",
-    };
+    return response.data.data || [];
   } catch (error) {
-    console.error("Error fetching metadata:", error.response?.data || error.message);
-    return { adName: "Unknown", campaignName: "Unknown", pageName: "Unknown", pageCategory: "Unknown" };
+    console.error("Error fetching pages:", error.response?.data || error.message);
+    return [];
   }
 };
 
@@ -116,12 +104,11 @@ const fetchLeads = async (formId, since = null) => {
 };
 
 // Process Leads
-const processLeads = async (leads, metadata, formName) => {
+const processLeads = async (leads, pageName, formName) => {
   for (const lead of leads) {
     try {
       console.log("Lead Data:", lead);
-      console.log("Metadata:", metadata);
-      console.log(`Form Name: ${formName}`);
+      console.log(`Page Name: ${pageName}, Form Name: ${formName}`);
 
       const parsedFields = {};
       lead.field_data.forEach((field) => {
@@ -136,13 +123,11 @@ const processLeads = async (leads, metadata, formName) => {
 };
 
 // Fetch forms and their leads for a page
-const fetchFormsAndLeads = async (pageId) => {
+const fetchFormsAndLeads = async (pageId, pageName) => {
   try {
     const response = await axios.get(`https://graph.facebook.com/v17.0/${pageId}/leadgen_forms`, {
       params: { access_token: USER_ACCESS_TOKEN, fields: "id,name" },
     });
-
-    console.log("Leadgen Forms Response:", JSON.stringify(response.data, null, 2)); // Debug forms response
 
     const forms = response.data.data || [];
     const lastSyncTime = getLastSyncTime();
@@ -150,24 +135,10 @@ const fetchFormsAndLeads = async (pageId) => {
 
     const now = Math.floor(Date.now() / 1000); // Current timestamp in seconds
 
-    if (forms.length === 0) {
-      console.log(`No leadgen forms found for Page ID: ${pageId}`);
-      return;
-    }
-
     for (const form of forms) {
       console.log(`Processing Form: ${form.name} (ID: ${form.id})`);
-
       const leads = await fetchLeads(form.id, lastSyncTime);
-
-      console.log(`Fetched Leads for Form ${form.id}:`, JSON.stringify(leads, null, 2)); // Debug leads response
-
-      if (leads.length === 0) {
-        console.log(`No leads found for Form: ${form.name} (ID: ${form.id})`);
-      } else {
-        const metadata = await fetchMetadata(null, null, pageId); // Add ad_id and adgroup_id if needed
-        await processLeads(leads, metadata, form.name);
-      }
+      await processLeads(leads, pageName, form.name);
     }
 
     saveLastSyncTime(now); // Update sync time
@@ -176,6 +147,23 @@ const fetchFormsAndLeads = async (pageId) => {
   }
 };
 
+// Fetch historical leads on server startup
+const fetchHistoricalLeads = async () => {
+  try {
+    const pages = await fetchPages();
+    if (pages.length === 0) {
+      console.log("No pages found for the account.");
+      return;
+    }
+
+    for (const page of pages) {
+      console.log(`Fetching historical leads for Page: ${page.name} (ID: ${page.id})`);
+      await fetchFormsAndLeads(page.id, page.name);
+    }
+  } catch (error) {
+    console.error("Error fetching historical leads:", error.message);
+  }
+};
 
 // Webhook Verification
 app.get("/webhook", (req, res) => {
@@ -198,8 +186,9 @@ app.post("/webhook", async (req, res) => {
   if (body.object === "page") {
     for (const entry of body.entry) {
       const pageId = entry.id;
+      const pageName = entry.name || "Unknown Page"; // Add logic to fetch page name if needed
       console.log(`Processing Page ID: ${pageId}`);
-      await fetchFormsAndLeads(pageId);
+      await fetchFormsAndLeads(pageId, pageName);
     }
   }
 
@@ -207,6 +196,8 @@ app.post("/webhook", async (req, res) => {
 });
 
 // Start the Server
-app.listen(5000, () => {
+app.listen(5000, async () => {
   console.log("Server is running on port 5000.");
+  console.log("Fetching historical leads...");
+  await fetchHistoricalLeads(); // Fetch historical leads on startup
 });
