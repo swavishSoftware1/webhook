@@ -73,6 +73,7 @@ const generateAppAccessToken = async () => {
 // Fetch Page Access Token
 const getPageAccessToken = async (pageId) => {
   try {
+    console.log(`Fetching Page Access Token for Page ID: ${pageId}`);
     const response = await axios.get(`https://graph.facebook.com/v17.0/me/accounts`, {
       params: { access_token: USER_ACCESS_TOKEN, fields: "id,name,access_token" },
     });
@@ -87,6 +88,26 @@ const getPageAccessToken = async (pageId) => {
     return page.access_token;
   } catch (error) {
     console.error("Error fetching Page Access Token:", error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// Fetch all leads for a form, optionally filtered by last sync time
+const fetchLeads = async (formId, pageAccessToken, since = null) => {
+  try {
+    const params = { access_token: pageAccessToken };
+
+    if (since) {
+      console.log(`Fetching leads created since: ${new Date(since * 1000).toISOString()}`);
+      params.filtering = JSON.stringify([{ field: "time_created", operator: "GREATER_THAN", value: since }]);
+    } else {
+      console.log("Fetching all historical leads (first run).");
+    }
+
+    const response = await axios.get(`https://graph.facebook.com/v17.0/${formId}/leads`, { params });
+    return response.data.data || [];
+  } catch (error) {
+    console.error("Error fetching leads:", error.response?.data || error.message);
     throw error;
   }
 };
