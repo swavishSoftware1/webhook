@@ -16,7 +16,7 @@ let USER_ACCESS_TOKEN = "EAAHEnds0DWQBO5081rvol3YOETWgDiNZBEEVIJJgoE0Ino5Uz8Nh5q
 const SYNC_FILE = "lastSyncTime.txt";
 
 // Utility to hash data
-const hashValue = (value) => crypto.createHash("sha256").update(value).digest("hex");
+const hashValue = (value) => (value ? crypto.createHash("sha256").update(value).digest("hex") : null);
 
 // Get last sync time
 const getLastSyncTime = () => {
@@ -31,10 +31,9 @@ const saveLastSyncTime = (time) => {
   fs.writeFileSync(SYNC_FILE, time.toString(), "utf8");
 };
 
-// Refresh or regenerate User Access Token
+// Refresh User Access Token
 const refreshAccessToken = async () => {
   try {
-    console.log("Refreshing User Access Token...");
     const response = await axios.get(`https://graph.facebook.com/v17.0/oauth/access_token`, {
       params: {
         grant_type: "fb_exchange_token",
@@ -46,44 +45,20 @@ const refreshAccessToken = async () => {
     USER_ACCESS_TOKEN = response.data.access_token;
     console.log("User Access Token refreshed successfully.");
   } catch (error) {
-    console.error("Failed to refresh User Access Token. Generating new app-level token...");
-    await generateAppAccessToken();
-  }
-};
-
-// Generate a new App-Level Access Token
-const generateAppAccessToken = async () => {
-  try {
-    console.log("Generating new App Access Token...");
-    const response = await axios.get(`https://graph.facebook.com/v17.0/oauth/access_token`, {
-      params: {
-        client_id: APP_ID,
-        client_secret: APP_SECRET,
-        grant_type: "client_credentials",
-      },
-    });
-    USER_ACCESS_TOKEN = response.data.access_token;
-    console.log("App Access Token generated successfully.");
-  } catch (error) {
-    console.error("Failed to generate App Access Token:", error.response?.data || error.message);
-    throw new Error("App Access Token generation failed.");
+    console.error("Failed to refresh User Access Token:", error.response?.data || error.message);
   }
 };
 
 // Fetch Page Access Token
 const getPageAccessToken = async (pageId) => {
   try {
-    console.log(`Fetching Page Access Token for Page ID: ${pageId}`);
     const response = await axios.get(`https://graph.facebook.com/v17.0/me/accounts`, {
       params: { access_token: USER_ACCESS_TOKEN, fields: "id,name,access_token" },
     });
 
-    const pages = response.data.data;
+    const pages = response.data.data || [];
     const page = pages.find((p) => p.id === pageId);
-
-    if (!page) {
-      throw new Error(`No access to page with ID: ${pageId}`);
-    }
+    if (!page) throw new Error(`No access to page with ID: ${pageId}`);
 
     return page.access_token;
   } catch (error) {
@@ -92,16 +67,12 @@ const getPageAccessToken = async (pageId) => {
   }
 };
 
-// Fetch all leads for a form, optionally filtered by last sync time
+// Fetch Leads
 const fetchLeads = async (formId, pageAccessToken, since = null) => {
   try {
     const params = { access_token: pageAccessToken };
-
     if (since) {
-      console.log(`Fetching leads created since: ${new Date(since * 1000).toISOString()}`);
       params.filtering = JSON.stringify([{ field: "time_created", operator: "GREATER_THAN", value: since }]);
-    } else {
-      console.log("Fetching all historical leads (first run).");
     }
 
     const response = await axios.get(`https://graph.facebook.com/v17.0/${formId}/leads`, { params });
@@ -112,7 +83,7 @@ const fetchLeads = async (formId, pageAccessToken, since = null) => {
   }
 };
 
-// Send Data to Facebook Pixel
+// Send Data to Pixel
 const sendDataToPixel = async (eventData) => {
   try {
     const response = await axios.post(
@@ -129,7 +100,8 @@ const sendDataToPixel = async (eventData) => {
       { params: { access_token: USER_ACCESS_TOKEN } }
     );
 
-    console.log("Data sent to Pixel:", response.data);
+    console.log("Data sent to Pixel:", JSON.stringify(eventData, null, 2));
+    console.log("Pixel Response:", JSON.stringify(response.data, null, 2));
   } catch (error) {
     console.error("Error sending data to Pixel:", error.response?.data || error.message);
   }
@@ -140,14 +112,18 @@ const processLeads = async (leads, pageName, formName) => {
   for (const lead of leads) {
     try {
       console.log(`Processing lead for Page: ${pageName}, Form: ${formName}`);
+      console.log("Lead Data:", JSON.stringify(lead, null, 2));
+
       const parsedFields = {};
       lead.field_data.forEach((field) => {
         parsedFields[field.name] = field.values && field.values.length ? field.values[0] : null;
       });
 
+      console.log("Dynamic Fields:", JSON.stringify(parsedFields, null, 2));
+
       const eventData = {
-        email: parsedFields.email ? hashValue(parsedFields.email) : null,
-        phone: parsedFields.phone_number ? hashValue(parsedFields.phone_number) : null,
+        email: hashValue(parsedFields.email),
+        phone: hashValue(parsedFields.phone_number),
         fn: parsedFields.full_name ? hashValue(parsedFields.full_name.split(" ")[0]) : null,
         ln: parsedFields.full_name ? hashValue(parsedFields.full_name.split(" ").slice(1).join(" ")) : null,
       };
@@ -159,7 +135,7 @@ const processLeads = async (leads, pageName, formName) => {
   }
 };
 
-// Fetch forms and their leads for a page
+// Fetch Forms and Leads
 const fetchFormsAndLeads = async (pageId, pageName, isHistorical = false) => {
   try {
     const pageAccessToken = await getPageAccessToken(pageId);
@@ -172,6 +148,7 @@ const fetchFormsAndLeads = async (pageId, pageName, isHistorical = false) => {
     const lastSyncTime = isHistorical ? null : getLastSyncTime();
 
     for (const form of forms) {
+      console.log(`Processing Form: ${form.name} (ID: ${form.id})`);
       const leads = await fetchLeads(form.id, pageAccessToken, lastSyncTime);
       await processLeads(leads, pageName, form.name);
     }
@@ -180,7 +157,7 @@ const fetchFormsAndLeads = async (pageId, pageName, isHistorical = false) => {
   }
 };
 
-// Fetch historical leads on server startup
+// Fetch Historical Leads
 const fetchHistoricalLeads = async () => {
   try {
     const response = await axios.get(`https://graph.facebook.com/v17.0/me/accounts`, {
@@ -189,6 +166,7 @@ const fetchHistoricalLeads = async () => {
 
     const pages = response.data.data || [];
     for (const page of pages) {
+      console.log(`Fetching historical leads for Page: ${page.name} (ID: ${page.id})`);
       await fetchFormsAndLeads(page.id, page.name, true);
     }
 
@@ -224,7 +202,7 @@ app.post("/webhook", async (req, res) => {
   res.status(200).send("EVENT_RECEIVED");
 });
 
-// Start the Server
+// Start Server
 app.listen(5000, async () => {
   console.log("Server is running on port 5000.");
   await fetchHistoricalLeads();
