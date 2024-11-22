@@ -117,8 +117,7 @@ const processLeads = async (leads, pageName, formName) => {
       const parsedFields = {};
       lead.field_data.forEach((field) => {
         parsedFields[field.name] = field.values && field.values.length ? field.values[0] : null;
-        console.log(`Field: ${field.name}, Value: ${value}`); // Log each field dynamically
-
+        console.log(`Field: ${field.name}, Value: ${parsedFields[field.name]}`);
       });
 
       console.log("Dynamic Fields:", JSON.stringify(parsedFields, null, 2));
