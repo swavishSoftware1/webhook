@@ -118,19 +118,20 @@ const processLeads = async (leads, pageName, formName) => {
   for (const lead of leads) {
     try {
       console.log(`Page Name: ${pageName}, Form Name: ${formName}`);
-      console.log("Lead Data:", lead);
+      console.log("Lead Data:", JSON.stringify(lead, null, 2)); // Use JSON.stringify for proper formatting
 
       const parsedFields = {};
       lead.field_data.forEach((field) => {
-        parsedFields[field.name] = field.values[0] || null;
+        parsedFields[field.name] = field.values && field.values.length ? field.values[0] : null; // Extract values
       });
 
-      console.log("Dynamic Fields:", parsedFields);
+      console.log("Dynamic Fields:", JSON.stringify(parsedFields, null, 2)); // Properly log extracted fields
     } catch (error) {
       console.error("Error processing lead:", error.message);
     }
   }
 };
+
 
 // Fetch forms and their leads for a page
 const fetchFormsAndLeads = async (pageId, pageName, isHistorical = false) => {
