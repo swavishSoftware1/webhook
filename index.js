@@ -160,6 +160,13 @@ app.post("/webhook", async (req, res) => {
       const pageId = entry.id;
       const pageName = entry.name || "Unknown Page";
 
+      // Handle test data (when page_id is 0)
+      if (!pageId || pageId === "0") {
+        console.log("Test Data Received:");
+        console.log(JSON.stringify(entry, null, 2)); // Log the entire test entry for debugging
+        continue; // Skip further processing for test data
+      }
+
       console.log(`Processing webhook event for Page: ${pageName} (ID: ${pageId})`);
 
       if (entry.changes) {
@@ -175,6 +182,7 @@ app.post("/webhook", async (req, res) => {
 
   res.status(200).send("EVENT_RECEIVED");
 });
+
 
 // Start the Server
 app.listen(5000, async () => {
