@@ -206,5 +206,5 @@ app.post("/webhook", async (req, res) => {
 // Start Server
 app.listen(5000, async () => {
   console.log("Server is running on port 5000.");
-  await fetchHistoricalLeads();
+  //await fetchHistoricalLeads();
 });
