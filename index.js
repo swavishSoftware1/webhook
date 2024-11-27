@@ -179,5 +179,5 @@ app.post("/webhook", async (req, res) => {
 // Start the Server
 app.listen(5000, async () => {
   console.log("Server is running on port 5000.");
-  await refreshAccessToken(); // Automatically refresh the token at startup
+  //await refreshAccessToken(); // Automatically refresh the token at startup
 });
