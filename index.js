@@ -57,7 +57,10 @@ const getPageAccessToken = async (pageId) => {
     });
 
     const pages = response.data.data || [];
+    console.log("pages :", pages);
     const page = pages.find((p) => p.id === pageId);
+    console.log("page :", page);
+
     if (!page) throw new Error(`No access to page with ID: ${pageId}`);
 
     return page.access_token;
