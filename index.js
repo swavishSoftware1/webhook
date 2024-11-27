@@ -196,7 +196,7 @@ app.post("/webhook", async (req, res) => {
 
   if (body.object === "page") {
     for (const entry of body.entry) {
-      //await fetchFormsAndLeads(entry.id, entry.name || "Unknown Page");
+      await fetchFormsAndLeads(entry.id, entry.name || "Unknown Page");
     }
   }
 
