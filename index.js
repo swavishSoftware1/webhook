@@ -112,7 +112,7 @@ const processLeads = async (leads, pageName, formName) => {
   for (const lead of leads) {
     try {
       console.log(`Processing lead for Page: ${pageName}, Form: ${formName}`);
-      console.log("Lead Data:", JSON.stringify(lead, null, 2));
+      //console.log("Lead Data:", JSON.stringify(lead, null, 2));
 
       const parsedFields = {};
       lead.field_data.forEach((field) => {
@@ -196,7 +196,7 @@ app.post("/webhook", async (req, res) => {
 
   if (body.object === "page") {
     for (const entry of body.entry) {
-      await fetchFormsAndLeads(entry.id, entry.name || "Unknown Page");
+      //await fetchFormsAndLeads(entry.id, entry.name || "Unknown Page");
     }
   }
 
