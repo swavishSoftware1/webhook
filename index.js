@@ -11,7 +11,7 @@ app.use(bodyParser.json());
 const VERIFY_TOKEN = "my_verify_token"; // Replace with your webhook verification token
 const APP_ID = "497657243241828"; // Your App ID
 const APP_SECRET = "6f6668bec23b20a09790e34f2d142f64"; // Your App Secret
-const PIXEL_ID = "500781749465576"; // Your Pixel ID
+const PIXEL_ID = "500781749465576"; // Replace with your Pixel ID
 let USER_ACCESS_TOKEN = "EAAHEnds0DWQBO5081rvol3YOETWgDiNZBEEVIJJgoE0Ino5Uz8Nh5qTAvStTZAiBMxBFKf3TZCrsMZAACk5bquQuysjCcpEKnA3rAzRPHWXfxzqusJ5wbN6gDv1upRrJK0ZBgoVkjgjlZBhRZA9K71j6ktVn9LTZBH82TDP5mZCdDJBg2qkiMISX2zl8e"; // Replace with a valid token
 const SYNC_FILE = "lastSyncTime.txt";
 
@@ -57,56 +57,31 @@ const getPageAccessToken = async (pageId) => {
     });
 
     const pages = response.data.data || [];
-    console.log("pages :", pages);
     const page = pages.find((p) => p.id === pageId);
-    console.log("page :", page);
 
-    if (!page) throw new Error(`No access to page with ID: ${pageId}`);
+    if (!page) {
+      console.error(`No access to page with ID: ${pageId}`);
+      return null;
+    }
 
     return page.access_token;
   } catch (error) {
     console.error("Error fetching Page Access Token:", error.response?.data || error.message);
-    throw error;
+    return null;
   }
 };
 
 // Fetch Leads
-const fetchLeads = async (formId, pageAccessToken, since = null) => {
+const fetchLeads = async (formId, pageAccessToken) => {
   try {
-    const params = { access_token: pageAccessToken };
-    if (since) {
-      params.filtering = JSON.stringify([{ field: "time_created", operator: "GREATER_THAN", value: since }]);
-    }
+    const response = await axios.get(`https://graph.facebook.com/v17.0/${formId}/leads`, {
+      params: { access_token: pageAccessToken },
+    });
 
-    const response = await axios.get(`https://graph.facebook.com/v17.0/${formId}/leads`, { params });
     return response.data.data || [];
   } catch (error) {
     console.error("Error fetching leads:", error.response?.data || error.message);
-    throw error;
-  }
-};
-
-// Send Data to Pixel
-const sendDataToPixel = async (eventData) => {
-  try {
-    const response = await axios.post(
-      `https://graph.facebook.com/v17.0/${PIXEL_ID}/events`,
-      {
-        data: [
-          {
-            event_name: "Lead",
-            event_time: Math.floor(Date.now() / 1000),
-            user_data: eventData,
-          },
-        ],
-      },
-      { params: { access_token: USER_ACCESS_TOKEN } }
-    );
-
-    console.log("Data sent to Pixel:", JSON.stringify(eventData, null, 2));
-    console.log("Pixel Response:", JSON.stringify(response.data, null, 2));
-  } catch (error) {
-    console.error("Error sending data to Pixel:", error.response?.data || error.message);
+    return [];
   }
 };
 
@@ -115,16 +90,15 @@ const processLeads = async (leads, pageName, formName) => {
   for (const lead of leads) {
     try {
       console.log(`Processing lead for Page: ${pageName}, Form: ${formName}`);
-      //console.log("Lead Data:", JSON.stringify(lead, null, 2));
 
       const parsedFields = {};
       lead.field_data.forEach((field) => {
         parsedFields[field.name] = field.values && field.values.length ? field.values[0] : null;
-        console.log(`Field: ${field.name}, Value: ${parsedFields[field.name]}`);
       });
 
-      console.log("Dynamic Fields:", JSON.stringify(parsedFields, null, 2));
+      console.log("Parsed Lead Data:", JSON.stringify(parsedFields, null, 2));
 
+      // Example: Sending lead data to a Pixel or CRM
       const eventData = {
         email: hashValue(parsedFields.email),
         phone: hashValue(parsedFields.phone_number),
@@ -132,51 +106,35 @@ const processLeads = async (leads, pageName, formName) => {
         ln: parsedFields.full_name ? hashValue(parsedFields.full_name.split(" ").slice(1).join(" ")) : null,
       };
 
-      await sendDataToPixel(eventData);
+      console.log("Processed Lead Data:", eventData);
+      // Add your logic to forward this data to your CRM or other systems
     } catch (error) {
       console.error("Error processing lead:", error.message);
     }
   }
 };
 
-// Fetch Forms and Leads
-const fetchFormsAndLeads = async (pageId, pageName, isHistorical = false) => {
+// Fetch Forms and Leads from a Specific Page
+const fetchFormsAndLeads = async (pageId, pageName) => {
   try {
     const pageAccessToken = await getPageAccessToken(pageId);
+    if (!pageAccessToken) {
+      console.error(`Failed to retrieve access token for Page ID: ${pageId}`);
+      return;
+    }
 
     const response = await axios.get(`https://graph.facebook.com/v17.0/${pageId}/leadgen_forms`, {
       params: { access_token: pageAccessToken, fields: "id,name" },
     });
 
     const forms = response.data.data || [];
-    const lastSyncTime = isHistorical ? null : getLastSyncTime();
-
     for (const form of forms) {
-      console.log(`Processing Form: ${form.name} (ID: ${form.id})`);
-      const leads = await fetchLeads(form.id, pageAccessToken, lastSyncTime);
+      console.log(`Fetching leads for Form: ${form.name} (ID: ${form.id})`);
+      const leads = await fetchLeads(form.id, pageAccessToken);
       await processLeads(leads, pageName, form.name);
     }
   } catch (error) {
     console.error("Error fetching forms and leads:", error.message);
-  }
-};
-
-// Fetch Historical Leads
-const fetchHistoricalLeads = async () => {
-  try {
-    const response = await axios.get(`https://graph.facebook.com/v17.0/me/accounts`, {
-      params: { access_token: USER_ACCESS_TOKEN, fields: "id,name" },
-    });
-
-    const pages = response.data.data || [];
-    for (const page of pages) {
-      console.log(`Fetching historical leads for Page: ${page.name} (ID: ${page.id})`);
-      await fetchFormsAndLeads(page.id, page.name, true);
-    }
-
-    saveLastSyncTime(Math.floor(Date.now() / 1000));
-  } catch (error) {
-    console.error("Error fetching historical leads:", error.message);
   }
 };
 
@@ -199,15 +157,27 @@ app.post("/webhook", async (req, res) => {
 
   if (body.object === "page") {
     for (const entry of body.entry) {
-      await fetchFormsAndLeads(entry.id, entry.name || "Unknown Page");
+      const pageId = entry.id;
+      const pageName = entry.name || "Unknown Page";
+
+      console.log(`Processing webhook event for Page: ${pageName} (ID: ${pageId})`);
+
+      if (entry.changes) {
+        for (const change of entry.changes) {
+          if (change.field === "leadgen") {
+            console.log(`New lead generated on Page: ${pageName}`);
+            await fetchFormsAndLeads(pageId, pageName);
+          }
+        }
+      }
     }
   }
 
   res.status(200).send("EVENT_RECEIVED");
 });
 
-// Start Server
+// Start the Server
 app.listen(5000, async () => {
   console.log("Server is running on port 5000.");
-  //await fetchHistoricalLeads();
+  await refreshAccessToken(); // Automatically refresh the token at startup
 });
