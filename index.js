@@ -37,32 +37,16 @@ const refreshAccessToken = async () => {
   }
 };
 
-// Fetch Page Access Token
-const getPageAccessToken = async (pageId) => {
+// Fetch Page Name
+const getPageName = async (pageId) => {
   try {
-    const response = await axios.get(`https://graph.facebook.com/v17.0/me/accounts`, {
-      params: { access_token: USER_ACCESS_TOKEN, fields: "id,name,access_token" },
+    const response = await axios.get(`https://graph.facebook.com/v17.0/${pageId}`, {
+      params: { access_token: USER_ACCESS_TOKEN, fields: "name" },
     });
-
-    const pages = response.data.data || [];
-    const page = pages.find((p) => p.id === pageId);
-
-    if (!page) {
-      console.error(`No access to page with ID: ${pageId}`);
-      return null;
-    }
-
-    return page.access_token;
+    return response.data.name || "Unknown Page";
   } catch (error) {
-    if (error.response?.data?.error?.code === 190) {
-      console.log("User access token expired. Refreshing...");
-      const refreshed = await refreshAccessToken();
-      if (refreshed) {
-        return getPageAccessToken(pageId); // Retry after refreshing the token
-      }
-    }
-    console.error("Error fetching Page Access Token:", error.response?.data || error.message);
-    return null;
+    console.error("Error fetching page name:", error.response?.data || error.message);
+    return "Unknown Page";
   }
 };
 
@@ -141,7 +125,8 @@ app.post("/webhook", async (req, res) => {
   if (body.object === "page") {
     for (const entry of body.entry) {
       const pageId = entry.id;
-      const pageName = entry.name || "Unknown Page";
+
+      const pageName = entry.name || (await getPageName(pageId));
 
       if (entry.changes) {
         for (const change of entry.changes) {
@@ -149,13 +134,7 @@ app.post("/webhook", async (req, res) => {
             const leadId = change.value.leadgen_id;
             console.log(`New lead generated on Page: ${pageName}, Lead ID: ${leadId}`);
 
-            const pageAccessToken = await getPageAccessToken(pageId);
-            if (!pageAccessToken) {
-              console.error(`Failed to retrieve access token for Page ID: ${pageId}`);
-              continue;
-            }
-
-            const leadData = await fetchLeadById(leadId, pageAccessToken);
+            const leadData = await fetchLeadById(leadId, USER_ACCESS_TOKEN);
             if (leadData) {
               await processLead(leadData, pageName, change.value.form_name || "Unknown Form");
             }
