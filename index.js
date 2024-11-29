@@ -129,14 +129,14 @@ const processLead = async (leadData, pageName, formName) => {
           },
         ],
       };
-      console.log("Payload Sent to Pixel:", JSON.stringify(pixelPayload, null, 2));
+      // console.log("Payload Sent to Pixel:", JSON.stringify(pixelPayload, null, 2));
 
-      const pixelResponse = await axios.post(
-        `https://graph.facebook.com/v17.0/${PIXEL_ID}/events`,
-        pixelPayload,
-        { params: { access_token: USER_ACCESS_TOKEN } }
-      );
-      console.log("Pixel Response:", JSON.stringify(pixelResponse.data, null, 2));
+      // const pixelResponse = await axios.post(
+      //   `https://graph.facebook.com/v17.0/${PIXEL_ID}/events`,
+      //   pixelPayload,
+      //   { params: { access_token: USER_ACCESS_TOKEN } }
+      // );
+      // console.log("Pixel Response:", JSON.stringify(pixelResponse.data, null, 2));
     } catch (error) {
       console.error(
         "Error sending data to Pixel:",
