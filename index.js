@@ -116,19 +116,19 @@ const processLead = async (leadData, pageName, formName) => {
       }
     }
 
-    console.log("Constructed User Data for Pixel:", userData);
+    //console.log("Constructed User Data for Pixel:", userData);
 
     // Send data to Pixel
-    try {
-      const pixelPayload = {
-        data: [
-          {
-            event_name: "Lead",
-            event_time: Math.floor(Date.now() / 1000),
-            user_data: userData, // Dynamically generated user data
-          },
-        ],
-      };
+    // try {
+    //   const pixelPayload = {
+    //     data: [
+    //       {
+    //         event_name: "Lead",
+    //         event_time: Math.floor(Date.now() / 1000),
+    //         user_data: userData, // Dynamically generated user data
+    //       },
+    //     ],
+    //   };
       // console.log("Payload Sent to Pixel:", JSON.stringify(pixelPayload, null, 2));
 
       // const pixelResponse = await axios.post(
@@ -137,12 +137,12 @@ const processLead = async (leadData, pageName, formName) => {
       //   { params: { access_token: USER_ACCESS_TOKEN } }
       // );
       // console.log("Pixel Response:", JSON.stringify(pixelResponse.data, null, 2));
-    } catch (error) {
-      console.error(
-        "Error sending data to Pixel:",
-        error.response?.data || error.message
-      );
-    }
+    // } catch (error) {
+    //   console.error(
+    //     "Error sending data to Pixel:",
+    //     error.response?.data || error.message
+    //   );
+    // }
   } catch (error) {
     console.error("Error processing lead:", error.message);
   }
