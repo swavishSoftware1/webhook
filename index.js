@@ -12,7 +12,7 @@ const APP_ID = "497657243241828"; // Your App ID
 const APP_SECRET = "6f666b8ec23b20a09790e34f2d142f64"; // Your App Secret
 const PIXEL_ID = "500781749465576"; // Replace with your Pixel ID
 let USER_ACCESS_TOKEN =
-  "EAALiJwzf9ZA0BO01DE7BQIpF6YMAXZAYq0QyXdQ7PD8KbY4ziC0Ba6BEZB7HZBXfjFkbSZBvpue51YPZCHLZAyizgPcYw1INhcq3fsc4GHPiEymR0ryzwAm9o3j8AGZAvorqnJUcWO1yVuLpKItCH4ZCq2xrLy2l7ZCK9ZCDwq7r5c52BEs0yfARIJADBX7GrnToedQoMfietuMstTufqZAtEQZDZD"; // Replace with a valid token
+  "EAAHEnds0DWQBOx6PZCEJ2GyBbbvSBwR1SS3bX4vZCPOFiB4zoQDyfSQvuZA7glIMvZAMK0snrkKZArBzNfFkmVNyxwbSRMdSV2akzvC8NDtfizBs5CXeNoejpiqXd9iVsyDWPulMYUnkZChCyknQZB6kcjeYEzu3jKO7wPW81HAdxWljNJKFKR3b0uc"; // Replace with a valid token
 
 // Utility to hash data
 const hashValue = (value) =>
